@@ -1,0 +1,177 @@
+---
+title: "Quickstart"
+description: "Install Recif and deploy your first AI agent in under 5 minutes."
+---
+
+## Prerequisites
+
+Before you begin, make sure you have:
+
+- **Kubernetes cluster** (v1.28+) — local (Colima, Minikube, kind) or cloud (GKE, EKS, AKS)
+- **Helm** (v3.12+)
+- **kubectl** configured for your cluster
+- An LLM provider API key (OpenAI, or a local Ollama instance)
+
+> [!TIP] For local development, we recommend Colima with Kubernetes enabled. It gives you a full K8s cluster on your Mac with minimal setup.
+
+## Step 1: Install Recif
+
+Add the Recif Helm repository and install the platform:
+
+```bash
+# Add the Helm repo
+helm repo add recif https://charts.recif.dev
+helm repo update
+
+# Install Recif in its own namespace
+helm install recif recif/recif \
+  --namespace recif-system \
+  --create-namespace \
+  --set global.domain=localhost
+```
+
+This deploys:
+- Recif API server (Go)
+- Recif Dashboard (Next.js)
+- Kubernetes Operator (kubebuilder)
+- PostgreSQL (for agent registry, conversations, audit)
+- Istio configuration (if Istio is installed)
+
+Verify the installation:
+
+```bash
+kubectl get pods -n recif-system
+```
+
+You should see all pods running:
+
+```
+NAME                              READY   STATUS    RESTARTS   AGE
+recif-api-6d4f8b7c9-x2k4m        1/1     Running   0          45s
+recif-dashboard-7f5a9b3d1-n8j2p  1/1     Running   0          45s
+recif-operator-5c8e2a6f4-q9w7r   1/1     Running   0          45s
+recif-postgres-0                  1/1     Running   0          45s
+```
+
+## Step 2: Configure Your LLM Provider
+
+Create a secret with your LLM provider credentials:
+
+```bash
+# For OpenAI
+kubectl create secret generic llm-openai \
+  --namespace recif-system \
+  --from-literal=api-key=sk-your-key-here
+
+# For Ollama (local)
+# No secret needed — Ollama runs locally on port 11434
+```
+
+## Step 3: Create Your First Agent
+
+Create an agent configuration file:
+
+```yaml
+# my-agent.yaml
+apiVersion: recif.dev/v1alpha1
+kind: Agent
+metadata:
+  name: my-first-agent
+  namespace: recif-system
+spec:
+  displayName: "My First Agent"
+  description: "A helpful assistant powered by Recif"
+
+  runtime:
+    image: ghcr.io/sciences44/corail:latest
+    strategy: react
+
+  llm:
+    provider: openai
+    model: gpt-4o-mini
+    secretRef:
+      name: llm-openai
+      key: api-key
+
+  channels:
+    - type: rest
+      port: 8000
+
+  governance:
+    riskProfile: low
+    guards:
+      - pii-detection
+      - secrets-detection
+    budgetTokensPerDay: 100000
+```
+
+Apply it:
+
+```bash
+kubectl apply -f my-agent.yaml
+```
+
+The Recif operator will:
+1. Validate the agent configuration
+2. Create a Corail pod with your config
+3. Set up an Istio VirtualService for routing
+4. Register the agent in the platform registry
+
+## Step 4: Talk to Your Agent
+
+Once the pod is running, you can interact with your agent via the REST API:
+
+```bash
+# Port-forward to the agent
+kubectl port-forward svc/my-first-agent 8000:8000 -n recif-system
+
+# Send a message
+curl -X POST http://localhost:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "Hello! What can you help me with?",
+    "conversation_id": "test-001"
+  }'
+```
+
+Or open the Recif Dashboard:
+
+```bash
+kubectl port-forward svc/recif-dashboard 3000:3000 -n recif-system
+# Open http://localhost:3000
+```
+
+## Step 5: Run an Evaluation
+
+Before promoting your agent to production, run an evaluation:
+
+```bash
+# Using the Recif CLI
+recif eval run my-first-agent \
+  --dataset golden-qa.json \
+  --scorers correctness,relevance,faithfulness
+```
+
+The evaluation pipeline will:
+1. Run your agent against the test dataset
+2. Score responses using MLflow GenAI scorers
+3. Compare against quality thresholds
+4. Gate the release (pass/fail)
+
+Check results in the dashboard or via CLI:
+
+```bash
+recif eval results my-first-agent --latest
+```
+
+## What's Next?
+
+You now have a running Recif installation with your first agent. Here is where to go from here:
+
+- [Architecture](/docs/architecture) — understand the full platform architecture
+- [Create an Agent](/docs/guides/create-agent) — detailed guide with all configuration options
+- [LLM Providers](/docs/guides/llm-providers) — configure different LLM backends
+- [Evaluation](/docs/guides/evaluation) — set up eval-driven releases
+- [Governance](/docs/guides/governance) — configure risk profiles and guards
+
+> [!NOTE] Recif is under active development. Some features described in these docs may be in preview or coming soon. Check the GitHub releases for the latest status.

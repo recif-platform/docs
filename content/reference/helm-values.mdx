@@ -1,0 +1,20 @@
+---
+title: "Helm Values"
+description: "Complete reference for the Recif Helm chart configuration values."
+---
+
+## Overview
+
+The Recif Helm chart packages all platform components for one-command installation. This page documents every configurable value with defaults and examples.
+
+> [!NOTE] This page is under active development. Full Helm values reference coming soon.
+
+## Sections
+
+- **global** — domain, TLS, image registry, pull secrets
+- **api** — API server replicas, resources, database connection
+- **dashboard** — Dashboard replicas, resources, base URL
+- **operator** — Operator settings, reconciliation interval, namespace watch
+- **postgresql** — Database settings, persistence, backups
+- **istio** — Service mesh configuration, mTLS, traffic policies
+- **mlflow** — MLflow server settings (optional)

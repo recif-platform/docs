@@ -1,0 +1,84 @@
+---
+title: "Introduction"
+description: "Recif is the open-source platform to govern, deploy, and operate AI agents — any framework, any cloud."
+---
+
+## What is Recif?
+
+Recif is an **open-source agentic platform** that separates _how you build agents_ from _how you deploy and manage them_. It provides enterprise-grade governance, evaluation, and operations for AI agents — regardless of the framework or cloud provider you use.
+
+The platform is built on two layers:
+
+- **Recif** (the reef) — the governance and operations layer. A Go backend + Next.js dashboard that handles agent registry, deployments, evaluation, RBAC, monitoring, and GitOps.
+- **Corail** (the coral) — the runtime and connector layer. A Python runtime that plugs into any agent framework (ADK, LangChain, CrewAI, or custom), connects channels, wires tools/MCP, LLMs, memory, and knowledge bases.
+
+> [!TIP] Think of it this way: you build your agent however you want. Recif makes sure it runs safely, scales properly, and stays accountable.
+
+## Why Recif?
+
+The AI agent ecosystem has excellent _building_ frameworks — LangChain, CrewAI, Google ADK, Semantic Kernel — but no open-source _operations_ platform. Organizations face real challenges:
+
+- **No governance**: who approved this agent? What can it access? What happens when it hallucinates?
+- **No evaluation pipeline**: how do you know if v2 is better than v1 before users see it?
+- **Framework lock-in**: switching from LangChain to ADK means rewriting everything.
+- **No multi-tenancy**: teams share infrastructure but need isolation.
+- **No deployment safety**: canary releases, rollback, A/B testing for agents.
+
+Recif solves all of these with a clean, Kubernetes-native architecture.
+
+## Core Capabilities
+
+| Capability | Description |
+|---|---|
+| **Agent Registry** | Versioned, metadata-rich catalog of all your agents |
+| **Agent-as-Code** | Declarative YAML configuration, GitOps-ready |
+| **Evaluation Pipeline** | MLflow-powered eval with 14+ scorers, quality gates, eval-gated releases |
+| **Governance** | Risk profiles, deny-by-default guards, PII detection, budget limits |
+| **Canary Deployments** | Blue/green, canary, A/B testing with auto-rollback via Istio |
+| **Multi-Tenancy** | Namespace-per-team isolation, RBAC, resource quotas |
+| **Knowledge Bases** | Maree ingestion pipeline with pgvector, evaluation-first approach |
+| **Agent Radar** | Health monitoring, drift detection, cost tracking, alerts |
+| **Framework Agnostic** | Works with ADK, LangChain, CrewAI, or bring your own |
+
+## Architecture at a Glance
+
+```
+                    ┌─────────────────────────────────────┐
+                    │           Recif Platform             │
+                    │  ┌──────────┐  ┌──────────────────┐ │
+                    │  │ Dashboard │  │   Go API Server  │ │
+                    │  │ (Next.js) │  │  (Registry, Auth │ │
+                    │  └──────────┘  │   Eval, Deploy)  │ │
+                    │                └──────────────────┘ │
+                    │         ┌─────────────┐             │
+                    │         │  Kubernetes  │             │
+                    │         │  Operator    │             │
+                    │         └──────┬──────┘             │
+                    └────────────────┼────────────────────┘
+                                     │ manages
+                    ┌────────────────┼────────────────────┐
+                    │        Agent Pods (Corail)           │
+                    │  ┌─────────┐ ┌─────────┐ ┌───────┐ │
+                    │  │ Agent A │ │ Agent B │ │ Agent │ │
+                    │  │ (ADK)   │ │ (Lang-  │ │  (C)  │ │
+                    │  │ +Istio  │ │  Chain) │ │       │ │
+                    │  └─────────┘ └─────────┘ └───────┘ │
+                    └─────────────────────────────────────┘
+```
+
+Each agent runs as a Kubernetes Pod with its own Corail runtime + Istio sidecar. Recif manages them through a kubebuilder operator that reconciles Agent CRDs.
+
+## Key Design Principles
+
+1. **Framework-agnostic** — never force a specific agent framework. Corail adapts to yours.
+2. **Eval-driven** — every release passes through quality gates before reaching production.
+3. **GitOps-native** — agent config is stored in a Git repo (`recif-state`), enabling full audit trail and ArgoCD integration.
+4. **Kubernetes-native** — built on CRDs, operators, Istio, and Helm. One-command install.
+5. **Pluggable everything** — bring your own LLM, vector DB, memory backend, embedding model, or evaluation framework.
+
+## Next Steps
+
+- [Quickstart](/docs/quickstart) — install Recif and deploy your first agent in 5 minutes
+- [Architecture](/docs/architecture) — deep dive into the two-layer architecture
+- [Create an Agent](/docs/guides/create-agent) — step-by-step guide to creating your first agent
+- [LLM Providers](/docs/guides/llm-providers) — configure OpenAI, Ollama, Vertex AI, and more

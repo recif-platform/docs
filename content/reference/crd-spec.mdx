@@ -1,0 +1,16 @@
+---
+title: "CRD Spec"
+description: "Complete specification for the Agent and Tool Custom Resource Definitions."
+---
+
+## Overview
+
+Recif uses Kubernetes Custom Resource Definitions (CRDs) to declare agents and tools. This page documents every field in the Agent and Tool CRDs with examples and validation rules.
+
+> [!NOTE] This page is under active development. Full CRD reference coming soon.
+
+## Resources
+
+- `Agent` (recif.dev/v1alpha1) — defines an AI agent with its runtime, LLM, channels, tools, and governance
+- `Tool` (recif.dev/v1alpha1) — defines a tool or MCP server available to agents
+- `PlatformConfig` (recif.dev/v1alpha1) — platform-wide settings, model whitelist, default guards

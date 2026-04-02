@@ -1,0 +1,19 @@
+---
+title: "GitOps Artifacts"
+description: "How Recif uses Git as the source of truth for agent configuration, enabling full audit trail and ArgoCD integration."
+---
+
+## Overview
+
+Agent configuration in Recif is stored as immutable versioned artifacts in a dedicated Git repository (recif-state). Every change is a commit, every version is diffable, and the entire deployment history is auditable. This prepares for full ArgoCD integration in v0.2.
+
+> [!NOTE] This page is under active development. Full content coming soon.
+
+## What You'll Learn
+
+- The recif-state repository structure
+- Immutable release artifacts (agents/slug/releases/vN.yaml)
+- How the API server commits config changes via GitHub API
+- Dual-track: ready-to-use agents vs custom dev agents
+- Evolution path: direct commits (v0.1), ArgoCD (v0.2), OCI registry (v0.3)
+- Rollback to any previous version

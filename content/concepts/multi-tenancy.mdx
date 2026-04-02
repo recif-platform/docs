@@ -1,0 +1,19 @@
+---
+title: "Multi-Tenancy"
+description: "Namespace-per-team isolation, RBAC, resource quotas, and context inheritance in Recif."
+---
+
+## Overview
+
+Recif achieves multi-tenancy through Kubernetes namespaces. Each team gets its own namespace with dedicated resource quotas, network policies, RBAC roles, and governance rules. Context cascades from platform to team to agent to user.
+
+> [!NOTE] This page is under active development. Full content coming soon.
+
+## What You'll Learn
+
+- Namespace-per-team isolation model
+- RBAC: platform admin, team admin, member, viewer roles
+- Resource quotas (CPU, memory, token budgets)
+- Network policies for agent-to-tool communication
+- Multi-level context hierarchy (platform, team, agent, user, session)
+- Cross-agent user preference propagation

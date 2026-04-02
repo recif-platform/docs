@@ -1,0 +1,285 @@
+---
+title: "LLM Providers"
+description: "Configure OpenAI, Ollama, Vertex AI, Bedrock, Anthropic, and other LLM providers in Recif."
+---
+
+## Overview
+
+Recif is **LLM-agnostic**. Corail provides a unified `LLMProvider` interface that abstracts away the differences between providers. You can switch providers by changing a few lines of YAML — no code changes required.
+
+Supported providers:
+
+| Provider | Status | Local | API Key | Models |
+|---|---|---|---|---|
+| **OpenAI** | Stable | No | Required | GPT-4o, GPT-4o-mini, o1, o3 |
+| **Ollama** | Stable | Yes | None | Llama 3, Mistral, Gemma, Qwen |
+| **Anthropic** | Stable | No | Required | Claude Sonnet, Claude Haiku |
+| **Google Vertex AI** | Preview | No | Service Account | Gemini Pro, Gemini Flash |
+| **AWS Bedrock** | Preview | No | IAM Role | Claude, Titan, Llama |
+| **Azure OpenAI** | Preview | No | Required | GPT-4o (Azure-hosted) |
+
+## Configuration
+
+LLM providers are configured in the Agent CRD under `spec.llm`:
+
+```yaml
+apiVersion: recif.dev/v1alpha1
+kind: Agent
+metadata:
+  name: my-agent
+spec:
+  llm:
+    provider: openai          # Provider name
+    model: gpt-4o-mini        # Model identifier
+    temperature: 0.7          # Generation temperature
+    maxTokens: 4096           # Max output tokens
+    secretRef:                # Credentials reference
+      name: llm-openai
+      key: api-key
+```
+
+## OpenAI
+
+The most common provider. Works with all GPT-4 and o-series models.
+
+### Setup
+
+```bash
+# Create the secret
+kubectl create secret generic llm-openai \
+  --namespace recif-system \
+  --from-literal=api-key=sk-proj-your-key-here
+```
+
+### Agent Configuration
+
+```yaml
+spec:
+  llm:
+    provider: openai
+    model: gpt-4o-mini       # or gpt-4o, o1, o3-mini
+    temperature: 0.7
+    maxTokens: 4096
+    secretRef:
+      name: llm-openai
+      key: api-key
+```
+
+### Available Models
+
+| Model | Best For | Cost |
+|---|---|---|
+| `gpt-4o` | Complex reasoning, multi-step tasks | $$ |
+| `gpt-4o-mini` | General purpose, good cost/quality ratio | $ |
+| `o1` | Deep reasoning, math, code | $$$ |
+| `o3-mini` | Fast reasoning, structured output | $$ |
+
+> [!TIP] For most agents, `gpt-4o-mini` offers the best balance of quality and cost. Use `gpt-4o` when you need stronger reasoning or tool-use capabilities.
+
+## Ollama (Local)
+
+Run LLMs locally with zero API costs. Perfect for development, air-gapped environments, and data-sensitive workloads.
+
+### Setup
+
+Install Ollama and pull a model:
+
+```bash
+# Install Ollama
+curl -fsSL https://ollama.ai/install.sh | sh
+
+# Pull a model
+ollama pull llama3.1:8b
+ollama pull mistral:7b
+```
+
+If running Ollama outside Kubernetes, make sure the agent pods can reach it:
+
+```bash
+# Ollama listens on port 11434 by default
+# Set OLLAMA_HOST=0.0.0.0 to allow external connections
+export OLLAMA_HOST=0.0.0.0
+ollama serve
+```
+
+### Agent Configuration
+
+```yaml
+spec:
+  llm:
+    provider: ollama
+    model: llama3.1:8b
+    baseUrl: http://host.docker.internal:11434  # From inside K8s
+    temperature: 0.7
+    maxTokens: 4096
+    # No secretRef needed — Ollama has no auth
+```
+
+### Available Models
+
+| Model | Parameters | RAM Required | Best For |
+|---|---|---|---|
+| `llama3.1:8b` | 8B | 8 GB | General purpose, fast |
+| `llama3.1:70b` | 70B | 48 GB | Complex reasoning |
+| `mistral:7b` | 7B | 8 GB | Coding, structured output |
+| `gemma2:9b` | 9B | 10 GB | Multilingual, compact |
+| `qwen2.5:7b` | 7B | 8 GB | Multilingual, coding |
+
+> [!NOTE] Ollama runs models on your hardware. Make sure you have enough RAM for your chosen model. For production, consider dedicated GPU nodes in your Kubernetes cluster.
+
+## Anthropic
+
+Access Claude models directly through the Anthropic API.
+
+### Setup
+
+```bash
+kubectl create secret generic llm-anthropic \
+  --namespace recif-system \
+  --from-literal=api-key=sk-ant-your-key-here
+```
+
+### Agent Configuration
+
+```yaml
+spec:
+  llm:
+    provider: anthropic
+    model: claude-sonnet-4-20250514
+    temperature: 0.7
+    maxTokens: 4096
+    secretRef:
+      name: llm-anthropic
+      key: api-key
+```
+
+## Google Vertex AI
+
+Use Gemini models via Google Cloud's Vertex AI platform. Requires a GCP project with Vertex AI enabled.
+
+### Setup
+
+```bash
+# Create a service account key and store it
+kubectl create secret generic llm-vertex \
+  --namespace recif-system \
+  --from-file=credentials.json=path/to/service-account.json
+```
+
+### Agent Configuration
+
+```yaml
+spec:
+  llm:
+    provider: vertex
+    model: gemini-2.0-flash
+    region: us-central1
+    projectId: your-gcp-project
+    secretRef:
+      name: llm-vertex
+      key: credentials.json
+```
+
+## AWS Bedrock
+
+Access foundation models through AWS Bedrock. Uses IAM roles for authentication.
+
+### Setup
+
+For EKS clusters, use IAM Roles for Service Accounts (IRSA):
+
+```yaml
+# Service account annotation
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: corail-bedrock
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789:role/bedrock-access
+```
+
+### Agent Configuration
+
+```yaml
+spec:
+  llm:
+    provider: bedrock
+    model: anthropic.claude-3-haiku-20240307-v1:0
+    region: us-east-1
+    serviceAccountName: corail-bedrock
+```
+
+## Switching Providers
+
+One of Recif's strengths is how easy it is to switch LLM providers. Since the `LLMProvider` interface abstracts all provider-specific logic, you only change the CRD:
+
+```yaml
+# Before: OpenAI
+spec:
+  llm:
+    provider: openai
+    model: gpt-4o-mini
+    secretRef: { name: llm-openai, key: api-key }
+
+# After: Ollama (local)
+spec:
+  llm:
+    provider: ollama
+    model: llama3.1:8b
+    baseUrl: http://ollama.default.svc:11434
+```
+
+Apply the change:
+
+```bash
+kubectl apply -f my-agent.yaml
+```
+
+The Recif operator will rolling-update the agent pod with the new LLM configuration. Zero downtime.
+
+## Model Governance
+
+Recif can enforce which models are allowed at the platform and team levels:
+
+```yaml
+# Platform-level model whitelist
+apiVersion: recif.dev/v1alpha1
+kind: PlatformConfig
+spec:
+  governance:
+    allowedModels:
+      - provider: openai
+        models: [gpt-4o, gpt-4o-mini]
+      - provider: ollama
+        models: ["*"]            # Allow all Ollama models
+      - provider: anthropic
+        models: [claude-sonnet-4-20250514]
+    deniedModels:
+      - provider: openai
+        models: [gpt-4]         # Deprecated, block usage
+```
+
+If an agent CRD references a model not in the whitelist, the operator rejects it with a clear validation error.
+
+## Provider Registry Pattern
+
+Under the hood, Corail uses a **registry pattern** (not if/elif chains) to manage providers:
+
+```python
+# All providers implement the same interface
+class LLMProvider(Protocol):
+    async def generate(self, messages, tools, config) -> LLMResponse: ...
+    async def stream(self, messages, tools, config) -> AsyncIterator[LLMChunk]: ...
+
+# Providers self-register
+@llm_registry.register("openai")
+class OpenAIProvider(LLMProvider): ...
+
+@llm_registry.register("ollama")
+class OllamaProvider(LLMProvider): ...
+
+# Resolution is a single lookup — no if/elif
+provider = llm_registry.get(agent_config.llm.provider)
+```
+
+This makes adding new providers trivial: implement the interface, register with the decorator, done.

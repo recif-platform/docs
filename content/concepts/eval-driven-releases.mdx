@@ -1,0 +1,19 @@
+---
+title: "Eval-Driven Releases"
+description: "How Recif uses evaluation quality gates to prevent bad agent versions from reaching production."
+---
+
+## Overview
+
+Eval-driven releases are a core Recif concept: no agent version reaches production without passing automated quality gates. This is powered by MLflow GenAI integration with 14+ scorers, golden datasets, and configurable thresholds.
+
+> [!NOTE] This page is under active development. Full content coming soon.
+
+## What You'll Learn
+
+- The eval-gated release pipeline: pending_eval, active, rejected
+- MLflow GenAI scorers: correctness, relevance, faithfulness, and more
+- Golden datasets: curated Q/A pairs for consistent testing
+- Quality gate thresholds and how to configure them
+- Continuous scoring in production via feedback loops
+- Regression detection: comparing new versions against previous ones
