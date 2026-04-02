@@ -26,7 +26,7 @@ function SearchIcon() {
 }
 
 export default function TopBar() {
-  const basePath = "/docs";
+  const basePath = "";
 
   return (
     <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-panel-border bg-ocean-deep/80 backdrop-blur-md px-6 md:pl-[284px]">

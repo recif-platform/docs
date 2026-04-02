@@ -1,36 +1,55 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+<div align="center">
 
-## Getting Started
+# Récif Documentation
 
-First, run the development server:
+**https://recif-platform.github.io/docs/**
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+Documentation for the [Récif](https://github.com/recif-platform) agentic AI platform.
+
+[![Live](https://img.shields.io/badge/docs-live-22d3ee)](https://recif-platform.github.io/docs/introduction)
+[![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/P279TT4ZCp)
+
+</div>
+
+---
+
+## Structure
+
+```
+content/
+├── introduction.mdx        # What is Récif
+├── quickstart.mdx           # 0 to running agent in 10 min
+├── architecture.mdx         # How components fit together
+├── guides/
+│   ├── create-agent.mdx     # Create your first agent
+│   ├── llm-providers.mdx    # Configure LLM providers
+│   ├── evaluation.mdx       # Eval-driven lifecycle
+│   ├── governance.mdx       # Scorecards & policies
+│   ├── canary-deployments.mdx
+│   └── knowledge-bases.mdx
+├── concepts/
+│   ├── agent-lifecycle.mdx
+│   ├── eval-driven-releases.mdx
+│   ├── multi-tenancy.mdx
+│   └── gitops-artifacts.mdx
+└── reference/
+    ├── environment-variables.mdx
+    ├── crd-spec.mdx
+    ├── helm-values.mdx
+    └── api-endpoints.mdx
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Dev
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm install
+npm run dev        # http://localhost:3000/docs/introduction
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Deploy
 
-## Learn More
+Automatic on push to `main` via GitHub Actions → GitHub Pages.
 
-To learn more about Next.js, take a look at the following resources:
+## License
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Apache-2.0

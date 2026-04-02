@@ -32,7 +32,7 @@ function ChevronIcon({ open }: { open: boolean }) {
 
 export default function Sidebar({ sections }: SidebarProps) {
   const pathname = usePathname();
-  const basePath = "/docs";
+  const basePath = "";
 
   // Determine which sections start open based on the current path
   const initialOpen: Record<string, boolean> = {};

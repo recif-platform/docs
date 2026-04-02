@@ -13,7 +13,7 @@ interface MobileSidebarProps {
 export default function MobileSidebar({ sections }: MobileSidebarProps) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
-  const basePath = "/docs";
+  const basePath = "";
 
   function isActive(slug: string) {
     return pathname === `${basePath}/${slug}`;
