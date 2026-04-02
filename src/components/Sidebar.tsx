@@ -61,7 +61,7 @@ export default function Sidebar({ sections }: SidebarProps) {
       <div className="flex items-center gap-3 px-5 py-5 border-b border-panel-border">
         <Link href={`${basePath}`} className="flex items-center gap-3">
           <Image
-            src={`${basePath}/logo.svg`}
+            src={`/logo.png`}
             alt="Recif"
             width={32}
             height={32}

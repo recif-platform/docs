@@ -1,214 +1,221 @@
 ---
 title: "Architecture"
-description: "Deep dive into Recif's two-layer architecture: Recif (governance) + Corail (runtime), Kubernetes-native, event-driven."
+description: "How Récif components fit together — two-layer architecture, Kubernetes-native, evaluation-driven lifecycle."
 ---
 
-## Two-Layer Architecture
+## High-Level Overview
 
-Recif cleanly separates **governance** from **runtime** into two distinct layers. This is the core architectural insight: how you _build_ your agent should be independent from how you _deploy and manage_ it.
+Récif separates **governance** (platform) from **execution** (agents). Agents are autonomous containers; Récif is the control tower that watches, evaluates, and governs them.
 
-```
-┌────────────────────────────────────────────────────────┐
-│                    Recif (Governance)                   │
-│                                                        │
-│  ┌───────────┐  ┌────────┐  ┌───────┐  ┌───────────┐ │
-│  │ Dashboard  │  │  API   │  │  CLI  │  │ Operator  │ │
-│  │ (Next.js)  │  │  (Go)  │  │(recif)│  │(kubebuildr)│ │
-│  └───────────┘  └────────┘  └───────┘  └───────────┘ │
-│                                                        │
-│  Registry │ Eval │ Deploy │ Governance │ Monitoring    │
-└────────────────────────┬───────────────────────────────┘
-                         │ gRPC (bidirectional streaming)
-                         │ mTLS via Istio
-┌────────────────────────┼───────────────────────────────┐
-│               Corail Pods (Runtime)                     │
-│                        │                                │
-│  ┌─────────────────────┼─────────────────────────┐     │
-│  │              Agent Pod                         │     │
-│  │  ┌──────────┐ ┌──────────┐ ┌───────────────┐ │     │
-│  │  │  Corail   │ │  Your    │ │ Istio Sidecar │ │     │
-│  │  │  Runtime  │ │  Agent   │ │   (Envoy)     │ │     │
-│  │  │          │ │  Code    │ │               │ │     │
-│  │  └──────────┘ └──────────┘ └───────────────┘ │     │
-│  └───────────────────────────────────────────────┘     │
-└────────────────────────────────────────────────────────┘
-```
+<div style={{background: 'linear-gradient(180deg, #0a1628 0%, #030a14 100%)', borderRadius: '16px', border: '1px solid rgba(56,189,248,0.12)', padding: '32px', margin: '24px 0'}}>
+<pre style={{color: '#e2e8f0', fontFamily: 'JetBrains Mono, monospace', fontSize: '13px', lineHeight: '1.6', overflow: 'auto'}}>
+{`
+  ┌─────────────────────────────────────────────────────────────────┐
+  │                    👤 Users & Channels                          │
+  │   Developer ──→ REST API    Employee ──→ Slack    Bot ──→ Cron  │
+  └───────────┬────────────────────┬──────────────────┬─────────────┘
+              │                    │                   │
+              ▼                    ▼                   ▼
+  ┌─────────────────────────────────────────────────────────────────┐
+  │               🪸 Agent Layer (team-default namespace)           │
+  │                                                                 │
+  │   ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐    │
+  │   │ Code Reviewer │  │ HR Assistant │  │ Security Scanner │    │
+  │   │ ADK  claude   │  │ Corail gpt4o│  │ CrewAI  claude   │    │
+  │   │ port 8000     │  │ port 8000    │  │ port 8000        │    │
+  │   └──────┬────────┘  └──────┬───────┘  └────────┬─────────┘    │
+  │          │ telemetry        │ telemetry          │ telemetry    │
+  └──────────┼──────────────────┼────────────────────┼──────────────┘
+             │                  │                    │
+             ▼                  ▼                    ▼
+  ┌─────────────────────────────────────────────────────────────────┐
+  │              🏗️ Platform Layer (recif-system namespace)         │
+  │                                                                 │
+  │  ┌──────────┐ ┌──────────┐ ┌───────────┐ ┌──────────────┐     │
+  │  │ Récif API│ │ Operator │ │ Dashboard │ │   EventBus   │     │
+  │  │ Go :8080 │ │kubebuildr│ │ Next :3000│ │  pub/sub     │     │
+  │  └────┬─────┘ └────┬─────┘ └─────┬─────┘ └──────────────┘     │
+  │       │             │             │                             │
+  │  ┌────┴─────────────┴─────────────┴──────────────────────┐     │
+  │  │ Governance │ Evaluation │ Releases │ Radar │ Feedback │     │
+  │  └──────────────────────────────────────────────────────┘     │
+  └───────────┬────────────────────┬──────────────────────────────┘
+              │                    │
+              ▼                    ▼
+  ┌─────────────────────────────────────────────────────────────────┐
+  │                  🗄️ Infrastructure                              │
+  │                                                                 │
+  │  ┌───────────┐  ┌──────────┐  ┌────────────┐  ┌──────────┐   │
+  │  │ PostgreSQL │  │  MLflow  │  │ recif-state│  │  Istio   │   │
+  │  │ + pgvector │  │ tracking │  │  Git repo  │  │  mesh    │   │
+  │  └───────────┘  └──────────┘  └────────────┘  └──────────┘   │
+  └─────────────────────────────────────────────────────────────────┘
+`}
+</pre>
+</div>
 
-### Recif — The Governance Layer
+## Component Breakdown
 
-Written in **Go**, Recif handles everything that happens _around_ your agents:
+| Component | Tech | Port | Role |
+|-----------|------|------|------|
+| **Récif API** | Go 1.22 | 8080 | 65+ REST endpoints — agent CRUD, releases, eval, governance, feedback |
+| **Operator** | Go, kubebuilder | 8081 | Watches Agent CRDs → reconciles Deployment + Service + ConfigMap |
+| **Dashboard** | Next.js 14 | 3000 | Chat, agent management, governance scorecards, AI Radar |
+| **Corail** | Python 3.13 | 8000/8001 | Agent runtime — LLM, tools, memory, SSE streaming, evaluation |
+| **PostgreSQL** | pgvector | 5432 | Agent metadata, knowledge base vectors |
+| **MLflow** | Python | 5000 | Trace storage, evaluation metrics, experiment tracking |
+| **recif-state** | Git repo | — | Immutable release artifacts (YAML), GitOps |
+| **Istio** | Envoy | — | mTLS, traffic splitting for canary, observability |
 
-- **Agent Registry**: versioned catalog with metadata, risk profiles, release history
-- **Evaluation Engine**: MLflow-integrated pipeline with 14+ scorers, quality gates
-- **Deployment Manager**: canary, blue/green, A/B releases via Istio traffic splitting
-- **Governance Engine**: risk profiles, guards (PII, secrets, budget), deny-by-default policies
-- **Kubernetes Operator**: kubebuilder-based, reconciles Agent CRDs into running pods
-- **Dashboard**: Next.js UI for managing agents, viewing evals, monitoring health
-- **CLI** (`recif`): developer-facing commands for init, register, eval, deploy, radar
+## Request Flow
 
-### Corail — The Runtime Layer
+What happens when a user sends a message:
 
-Written in **Python**, Corail is the universal adapter that runs inside each agent pod:
+<div style={{background: '#0d1f38', borderRadius: '12px', border: '1px solid rgba(56,189,248,0.1)', padding: '24px', margin: '24px 0'}}>
+<pre style={{color: '#e2e8f0', fontFamily: 'JetBrains Mono, monospace', fontSize: '12px', lineHeight: '1.8'}}>
+{`1. User sends message via Dashboard or API
+        │
+        ▼
+2. Récif API receives POST /api/v1/agents/{id}/chat/stream
+        │
+        ▼
+3. API proxies to Corail agent pod (HTTP or gRPC)
+   http://{slug}.team-default.svc.cluster.local:8000
+        │
+        ▼
+4. Corail Pipeline:
+   ┌─────────────────────────────────────────────┐
+   │  Input → Guards → Strategy → LLM → Output  │
+   │              │         │                     │
+   │              │    ┌────┴────┐                │
+   │              │    │  Tools  │                │
+   │              │    │  Memory │                │
+   │              │    │  RAG    │                │
+   │              │    └─────────┘                │
+   └─────────────────────────────────────────────┘
+        │
+        ▼
+5. Response streamed back via SSE (Server-Sent Events)
+   Thinking blocks → Content tokens → Done event → Suggestions`}
+</pre>
+</div>
 
-- **Framework Agnostic**: plugs into ADK, LangChain, CrewAI, or custom agent strategies
-- **Channel Support**: REST API, embeddable widget, Slack, Discord (via channel registry)
-- **Tool/MCP Wiring**: connects to any MCP server, wraps CLI tools, manages tool permissions
-- **LLM Abstraction**: unified interface for OpenAI, Ollama, Vertex AI, Bedrock, Anthropic
-- **Memory Management**: conversation memory, agent memory, knowledge base integration
-- **Event Bus**: all actions emit events (message.received, tool.called, guard.blocked) for audit and monitoring
+## Deployment Flow
 
-## Kubernetes-Native Design
+What happens when you deploy an agent:
 
-Every agent in Recif is a Kubernetes resource:
+<div style={{background: '#0d1f38', borderRadius: '12px', border: '1px solid rgba(56,189,248,0.1)', padding: '24px', margin: '24px 0'}}>
+<pre style={{color: '#e2e8f0', fontFamily: 'JetBrains Mono, monospace', fontSize: '12px', lineHeight: '1.8'}}>
+{`1. Create Agent (Dashboard or API)
+   POST /api/v1/agents → DB record created
+        │
+        ▼
+2. Deploy → Agent CRD created in K8s
+   kubectl apply Agent CRD → team-default namespace
+        │
+        ▼
+3. Operator reconciles
+   ┌──────────────────────────────────┐
+   │  Agent CRD                       │
+   │    │                             │
+   │    ├──→ Deployment (Corail pod)  │
+   │    ├──→ Service (ClusterIP)      │
+   │    └──→ ConfigMap (env vars)     │
+   └──────────────────────────────────┘
+        │
+        ▼
+4. Release created → committed to recif-state Git repo
+   agents/{slug}/releases/v{N}.yaml
+        │
+        ▼
+5. Eval gate (if min_quality_score > 0)
+   ┌─────────────────────────────────────────┐
+   │  status: pending_eval                    │
+   │    │                                     │
+   │    ├──→ Corail evaluates (14 scorers)    │
+   │    │                                     │
+   │    ├──→ Score ≥ threshold → ✅ approved   │
+   │    │   → Apply to K8s, write current.yaml│
+   │    │                                     │
+   │    └──→ Score < threshold → ❌ rejected   │
+   │        → Rollback, keep previous version │
+   └─────────────────────────────────────────┘`}
+</pre>
+</div>
 
-```yaml
-apiVersion: recif.dev/v1alpha1
-kind: Agent
-metadata:
-  name: support-agent
-  namespace: team-engineering
-spec:
-  runtime:
-    image: ghcr.io/sciences44/corail:latest
-    strategy: react
-  llm:
-    provider: openai
-    model: gpt-4o
-  governance:
-    riskProfile: medium
-    guards: [pii-detection, secrets-detection, budget]
-    budgetTokensPerDay: 500000
-```
+## Evaluation-Driven Lifecycle
 
-The Recif operator watches for Agent CRDs and reconciles them into:
+The core differentiator: **no agent ships without proof**.
 
-1. A **Deployment** running the Corail image with your agent config
-2. A **Service** for internal communication
-3. An **Istio VirtualService** for traffic routing and canary releases
-4. **ConfigMaps** for agent configuration (SOUL.md, AGENTS.md)
-5. **Secrets** for LLM API keys and tool credentials
+<div style={{background: '#0d1f38', borderRadius: '12px', border: '1px solid rgba(56,189,248,0.1)', padding: '24px', margin: '24px 0'}}>
+<pre style={{color: '#e2e8f0', fontFamily: 'JetBrains Mono, monospace', fontSize: '12px', lineHeight: '1.8'}}>
+{`┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
+│  Ingest  │───→│ Dataset  │───→│ Evaluate │───→│  Gate    │
+│  (Marée) │    │ (Golden) │    │(14 score)│    │(approve/ │
+└──────────┘    └──────────┘    └──────────┘    │ reject)  │
+                     ▲                           └────┬─────┘
+                     │                                │
+                     │                                ▼
+┌──────────┐    ┌────┴─────┐    ┌──────────┐    ┌──────────┐
+│ Feedback │───→│ Append   │    │ Canary   │←───│ Release  │
+│(👍/👎)   │    │to dataset│    │(10%→100%)│    │(GitOps)  │
+└──────────┘    └──────────┘    └──────────┘    └──────────┘
+                                     │
+                                     ▼
+                                ┌──────────┐
+                                │Production│
+                                │monitoring│
+                                └──────────┘`}
+</pre>
+</div>
 
-### Namespace-per-Team Isolation
+**14 MLflow Scorers**: Safety, Relevance, Correctness, Completeness, Fluency, Equivalence, Summarization, Guidelines, ExpectationsGuidelines, RetrievalRelevance, RetrievalGroundedness, RetrievalSufficiency, ToolCallCorrectness, ToolCallEfficiency.
 
-Multi-tenancy is achieved through Kubernetes namespaces:
+## Namespace Layout
 
-```
-recif-system/          # Platform components
-team-engineering/      # Engineering team's agents
-team-support/          # Support team's agents
-team-marketing/        # Marketing team's agents
-```
+| Namespace | What Runs | Purpose |
+|-----------|-----------|---------|
+| `recif-system` | API, Operator, Dashboard | Platform control plane |
+| `team-default` | Agent pods (one per agent) | Default team namespace |
+| `team-{name}` | Agent pods for team | Multi-tenant isolation |
+| `mlflow-system` | MLflow tracking server | Evaluation & traces |
+| `istio-system` | Istiod, gateways | Service mesh (optional) |
 
-Each namespace gets its own:
-- Resource quotas (CPU, memory, tokens)
-- Network policies (agents can only reach their own tools)
-- RBAC roles (team members manage their own agents)
-- Budget limits and governance rules
+## GitOps: Release Artifacts
 
-## Communication: gRPC Bidirectional Streaming
-
-Recif and Corail communicate over **gRPC** with bidirectional streaming, secured by Istio mTLS:
-
-**Recif to Corail** (control plane):
-- `UpdateConfig` — push new configuration
-- `ReloadTools` — hot-reload tool definitions
-- `Pause` / `Resume` — traffic control
-- `Terminate` — graceful shutdown
-
-**Corail to Recif** (event stream):
-- Audit events (every message, tool call, guard decision)
-- Monitoring metrics (latency, token usage, error rates)
-- Evaluation results
-- Governance compliance reports
-
-## Multi-Level Context Hierarchy
-
-Context cascades from platform down to session, with each level inheriting from the one above:
-
-```
-PLATFORM (Recif global)
-│  Platform-wide settings, default guards, model whitelist
-│
-├── TEAM (Kubernetes namespace)
-│   │  Team tools, knowledge bases, budget, team guards
-│   │
-│   ├── AGENT (pod)
-│   │   │  Agent identity (SOUL.md), operational rules
-│   │   │
-│   │   ├── USER (per-request, from JWT)
-│   │   │   Preferences, permissions, personal memory
-│   │   │
-│   │   └── SESSION (per-conversation)
-│   │       Ephemeral conversation state
-```
-
-| Level | What | Set By | Stored In |
-|---|---|---|---|
-| Platform | Default guards, model whitelist, cost limits | Platform admin | Recif DB / ConfigMap |
-| Team | Tools, KBs, team budget, team guards | Team admin | Namespace ConfigMap |
-| Agent | Identity (SOUL.md), rules (AGENTS.md) | Agent CRD | Pod volume |
-| User | Preferences, permissions, memory | JWT + DB | Recif DB |
-| Session | Conversation state | Auto | PostgreSQL |
-
-A key insight: **user preferences propagate across agents**. If a user sets `language=fr`, every agent they talk to knows this — because user context is stored at the platform level, not inside individual agent pods.
-
-## Event-Driven Architecture
-
-An internal EventBus connects all Corail components:
-
-```
-message.received → Guard Pipeline → Agent Loop → tool.called
-                                                → llm.invoked
-                                                → memory.updated
-                                  → response.sent → Audit
-                                                  → Monitoring
-                                                  → Eval (if enabled)
-```
-
-Every event is:
-- **Typed** — strongly typed event definitions
-- **Auditable** — persisted for compliance and debugging
-- **Subscribable** — any component can react to any event
-- **Traceable** — linked to MLflow traces via OpenTelemetry
-
-## GitOps: Agent Artifacts
-
-Agent configuration is stored as immutable versioned artifacts in a dedicated Git repository (`recif-state`):
+Every agent version is an immutable YAML committed to Git:
 
 ```
 recif-state/
 ├── agents/
-│   ├── support-agent/
-│   │   ├── current.yaml        # Active configuration
+│   ├── code-reviewer/
+│   │   ├── current.yaml          ← active version
 │   │   └── releases/
-│   │       ├── v1.yaml         # Immutable release artifact
+│   │       ├── v1.yaml           ← immutable
 │   │       ├── v2.yaml
 │   │       └── v3.yaml
-│   └── sre-bot/
+│   └── hr-assistant/
 │       ├── current.yaml
 │       └── releases/
-│           └── v1.yaml
-├── skills/
-├── policies/
-└── platform.yaml
+│           ├── v1.yaml
+│           ├── v2.yaml           ← status: rejected
+│           └── v3.yaml           ← status: pending_eval
 ```
 
-This enables:
-- Full audit trail (every change is a Git commit)
-- Diff any two versions
-- ArgoCD integration (v0.2) for automated GitOps
-- Rollback to any previous version instantly
+Each release artifact contains: model config, system prompt, tools, skills, governance rules, checksum, changelog. Full audit trail via Git history.
 
 ## Technology Stack
 
-| Component | Technology | Why |
-|---|---|---|
-| API Server | Go | Performance, strong typing, K8s ecosystem |
-| Dashboard | Next.js + React | SSR, modern frontend, Tailwind |
-| Operator | kubebuilder (Go) | Native K8s operator pattern |
-| Runtime | Python (Corail) | AI/ML ecosystem, framework compatibility |
-| Database | PostgreSQL | Reliable, pgvector for embeddings |
-| Service Mesh | Istio + Envoy | mTLS, traffic splitting, observability |
-| Evaluation | MLflow | Industry standard, GenAI scorers, traces |
-| Packaging | Helm | Standard K8s packaging |
-| Ingestion | Maree (Python) | Pluggable pipeline, Docling, evaluation-first |
+| Layer | Component | Technology | Why |
+|-------|-----------|------------|-----|
+| **Platform** | API Server | Go 1.22 + chi | Performance, K8s native |
+| | Dashboard | Next.js 14 + React | Modern frontend, SSR |
+| | Operator | kubebuilder (Go) | Native K8s operator pattern |
+| **Runtime** | Corail | Python 3.13 | AI/ML ecosystem compatibility |
+| | Models | 7 providers | Registry pattern, lazy loading |
+| | Channels | REST, Slack, CLI, WS | Multi-channel by design |
+| **Infra** | Database | PostgreSQL + pgvector | Reliable, vector search |
+| | Eval | MLflow GenAI | Industry standard, 14 scorers |
+| | Mesh | Istio + Envoy | mTLS, canary traffic splitting |
+| | Packaging | Helm 3 | Standard K8s packaging |
+| | Ingestion | Marée (Python) | Docling, pluggable pipeline |
