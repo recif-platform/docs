@@ -13,7 +13,7 @@ export default async function DocPage({ params }: PageProps) {
 
   // Root /docs → redirect to introduction
   if (!slug || slug.length === 0) {
-    redirect("/introduction");
+    redirect("/docs/introduction");
   }
 
   const slugPath = slug.join("/");
@@ -22,7 +22,7 @@ export default async function DocPage({ params }: PageProps) {
   try {
     doc = getDocBySlug(slugPath);
   } catch {
-    redirect("/introduction");
+    redirect("/docs/introduction");
   }
 
   return (
