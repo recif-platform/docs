@@ -7,52 +7,45 @@ description: "How Récif components fit together — two-layer architecture, Kub
 
 Récif separates **governance** (platform) from **execution** (agents). Agents are autonomous containers; Récif is the control tower that watches, evaluates, and governs them.
 
-<div style={{background: 'linear-gradient(180deg, #0a1628 0%, #030a14 100%)', borderRadius: '16px', border: '1px solid rgba(56,189,248,0.12)', padding: '32px', margin: '24px 0'}}>
-<pre style={{color: '#e2e8f0', fontFamily: 'JetBrains Mono, monospace', fontSize: '13px', lineHeight: '1.6', overflow: 'auto'}}>
-{`
+```
   ┌─────────────────────────────────────────────────────────────────┐
-  │                    👤 Users & Channels                          │
-  │   Developer ──→ REST API    Employee ──→ Slack    Bot ──→ Cron  │
+  │                     Users & Channels                            │
+  │   Developer → REST API    Employee → Slack    Bot → Cron        │
   └───────────┬────────────────────┬──────────────────┬─────────────┘
               │                    │                   │
               ▼                    ▼                   ▼
   ┌─────────────────────────────────────────────────────────────────┐
-  │               🪸 Agent Layer (team-default namespace)           │
+  │                Agent Layer  (team-default namespace)            │
   │                                                                 │
   │   ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐    │
   │   │ Code Reviewer │  │ HR Assistant │  │ Security Scanner │    │
   │   │ ADK  claude   │  │ Corail gpt4o│  │ CrewAI  claude   │    │
   │   │ port 8000     │  │ port 8000    │  │ port 8000        │    │
   │   └──────┬────────┘  └──────┬───────┘  └────────┬─────────┘    │
-  │          │ telemetry        │ telemetry          │ telemetry    │
   └──────────┼──────────────────┼────────────────────┼──────────────┘
-             │                  │                    │
+             │ telemetry        │ telemetry          │ telemetry
              ▼                  ▼                    ▼
   ┌─────────────────────────────────────────────────────────────────┐
-  │              🏗️ Platform Layer (recif-system namespace)         │
+  │               Platform Layer  (recif-system namespace)         │
   │                                                                 │
   │  ┌──────────┐ ┌──────────┐ ┌───────────┐ ┌──────────────┐     │
   │  │ Récif API│ │ Operator │ │ Dashboard │ │   EventBus   │     │
   │  │ Go :8080 │ │kubebuildr│ │ Next :3000│ │  pub/sub     │     │
   │  └────┬─────┘ └────┬─────┘ └─────┬─────┘ └──────────────┘     │
   │       │             │             │                             │
-  │  ┌────┴─────────────┴─────────────┴──────────────────────┐     │
-  │  │ Governance │ Evaluation │ Releases │ Radar │ Feedback │     │
-  │  └──────────────────────────────────────────────────────┘     │
+  │  Governance │ Evaluation │ Releases │ Radar │ Feedback          │
   └───────────┬────────────────────┬──────────────────────────────┘
               │                    │
               ▼                    ▼
   ┌─────────────────────────────────────────────────────────────────┐
-  │                  🗄️ Infrastructure                              │
+  │                       Infrastructure                            │
   │                                                                 │
   │  ┌───────────┐  ┌──────────┐  ┌────────────┐  ┌──────────┐   │
   │  │ PostgreSQL │  │  MLflow  │  │ recif-state│  │  Istio   │   │
   │  │ + pgvector │  │ tracking │  │  Git repo  │  │  mesh    │   │
   │  └───────────┘  └──────────┘  └────────────┘  └──────────┘   │
   └─────────────────────────────────────────────────────────────────┘
-`}
-</pre>
-</div>
+```
 
 ## Component Breakdown
 
@@ -71,9 +64,8 @@ Récif separates **governance** (platform) from **execution** (agents). Agents a
 
 What happens when a user sends a message:
 
-<div style={{background: '#0d1f38', borderRadius: '12px', border: '1px solid rgba(56,189,248,0.1)', padding: '24px', margin: '24px 0'}}>
-<pre style={{color: '#e2e8f0', fontFamily: 'JetBrains Mono, monospace', fontSize: '12px', lineHeight: '1.8'}}>
-{`1. User sends message via Dashboard or API
+```
+1. User sends message via Dashboard or API
         │
         ▼
 2. Récif API receives POST /api/v1/agents/{id}/chat/stream
@@ -96,17 +88,15 @@ What happens when a user sends a message:
         │
         ▼
 5. Response streamed back via SSE (Server-Sent Events)
-   Thinking blocks → Content tokens → Done event → Suggestions`}
-</pre>
-</div>
+   Thinking blocks → Content tokens → Done event → Suggestions
+```
 
 ## Deployment Flow
 
 What happens when you deploy an agent:
 
-<div style={{background: '#0d1f38', borderRadius: '12px', border: '1px solid rgba(56,189,248,0.1)', padding: '24px', margin: '24px 0'}}>
-<pre style={{color: '#e2e8f0', fontFamily: 'JetBrains Mono, monospace', fontSize: '12px', lineHeight: '1.8'}}>
-{`1. Create Agent (Dashboard or API)
+```
+1. Create Agent (Dashboard or API)
    POST /api/v1/agents → DB record created
         │
         ▼
@@ -129,27 +119,24 @@ What happens when you deploy an agent:
         │
         ▼
 5. Eval gate (if min_quality_score > 0)
-   ┌─────────────────────────────────────────┐
-   │  status: pending_eval                    │
-   │    │                                     │
-   │    ├──→ Corail evaluates (14 scorers)    │
-   │    │                                     │
-   │    ├──→ Score ≥ threshold → ✅ approved   │
-   │    │   → Apply to K8s, write current.yaml│
-   │    │                                     │
-   │    └──→ Score < threshold → ❌ rejected   │
-   │        → Rollback, keep previous version │
-   └─────────────────────────────────────────┘`}
-</pre>
-</div>
+
+   status: pending_eval
+     │
+     ├──→ Corail evaluates (14 MLflow scorers)
+     │
+     ├──→ Score ≥ threshold → ✅ approved
+     │    Apply to K8s, write current.yaml
+     │
+     └──→ Score < threshold → ❌ rejected
+          Rollback, keep previous version
+```
 
 ## Evaluation-Driven Lifecycle
 
 The core differentiator: **no agent ships without proof**.
 
-<div style={{background: '#0d1f38', borderRadius: '12px', border: '1px solid rgba(56,189,248,0.1)', padding: '24px', margin: '24px 0'}}>
-<pre style={{color: '#e2e8f0', fontFamily: 'JetBrains Mono, monospace', fontSize: '12px', lineHeight: '1.8'}}>
-{`┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
+```
+┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
 │  Ingest  │───→│ Dataset  │───→│ Evaluate │───→│  Gate    │
 │  (Marée) │    │ (Golden) │    │(14 score)│    │(approve/ │
 └──────────┘    └──────────┘    └──────────┘    │ reject)  │
@@ -158,16 +145,15 @@ The core differentiator: **no agent ships without proof**.
                      │                                ▼
 ┌──────────┐    ┌────┴─────┐    ┌──────────┐    ┌──────────┐
 │ Feedback │───→│ Append   │    │ Canary   │←───│ Release  │
-│(👍/👎)   │    │to dataset│    │(10%→100%)│    │(GitOps)  │
+│ (👍/👎)  │    │to dataset│    │(10%→100%)│    │(GitOps)  │
 └──────────┘    └──────────┘    └──────────┘    └──────────┘
                                      │
                                      ▼
                                 ┌──────────┐
                                 │Production│
                                 │monitoring│
-                                └──────────┘`}
-</pre>
-</div>
+                                └──────────┘
+```
 
 **14 MLflow Scorers**: Safety, Relevance, Correctness, Completeness, Fluency, Equivalence, Summarization, Guidelines, ExpectationsGuidelines, RetrievalRelevance, RetrievalGroundedness, RetrievalSufficiency, ToolCallCorrectness, ToolCallEfficiency.
 
@@ -203,6 +189,36 @@ recif-state/
 ```
 
 Each release artifact contains: model config, system prompt, tools, skills, governance rules, checksum, changelog. Full audit trail via Git history.
+
+## Example Agent CRD
+
+```yaml
+apiVersion: agents.recif.dev/v1
+kind: Agent
+metadata:
+  name: hr-assistant
+  namespace: team-default
+spec:
+  name: "HR Assistant"
+  framework: corail
+  strategy: agent-react
+  channel: rest
+  modelType: vertex-ai
+  modelId: gemini-2.5-flash
+  gcpServiceAccount: "hr-agent@my-project.iam.gserviceaccount.com"
+  systemPrompt: "You are an HR assistant helping employees..."
+  tools:
+    - web-search
+    - hr-knowledge-lookup
+  knowledgeBases:
+    - hr-policies
+  skills:
+    - agui-render
+  storage: postgresql
+  replicas: 2
+  evalSampleRate: 10
+  judgeModel: "openai:/gpt-4o-mini"
+```
 
 ## Technology Stack
 

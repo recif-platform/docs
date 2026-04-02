@@ -58,7 +58,7 @@ export default function MobileSidebar({ sections }: MobileSidebarProps) {
             onClick={() => setOpen(false)}
           >
             <Image
-              src={`/logo.png`}
+              src="/docs/logo.png"
               alt="Recif"
               width={28}
               height={28}

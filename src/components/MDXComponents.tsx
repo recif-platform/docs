@@ -149,6 +149,35 @@ export function getMDXComponents(): MDXComponentsType {
         {children}
       </td>
     ),
+    pre: ({ children, ...props }: React.HTMLAttributes<HTMLPreElement>) => (
+      <pre
+        className="my-6 overflow-x-auto rounded-xl border border-panel-border bg-ocean-mid p-5 text-sm leading-relaxed"
+        style={{ fontFamily: "'JetBrains Mono', monospace" }}
+        {...props}
+      >
+        {children}
+      </pre>
+    ),
+    code: ({ children, className, ...props }: React.HTMLAttributes<HTMLElement>) => {
+      // Inline code (no className and no data-language = not from rehype-pretty-code)
+      const isBlock = className || (props as Record<string, unknown>)["data-language"];
+      if (!isBlock) {
+        return (
+          <code
+            className="rounded bg-ocean-mid px-1.5 py-0.5 text-sm text-reef-cyan border border-panel-border"
+            style={{ fontFamily: "'JetBrains Mono', monospace" }}
+            {...props}
+          >
+            {children}
+          </code>
+        );
+      }
+      return (
+        <code className={className} {...props}>
+          {children}
+        </code>
+      );
+    },
     hr: () => <hr className="my-8 border-panel-border" />,
     img: ({ alt, ...props }) => (
       // eslint-disable-next-line @next/next/no-img-element

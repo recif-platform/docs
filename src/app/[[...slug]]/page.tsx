@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { MDXRemote } from "next-mdx-remote/rsc";
+import rehypePrettyCode from "rehype-pretty-code";
 import { getDocBySlug, getAllDocs, NAV_SECTIONS } from "@/lib/mdx";
 import DocLayout from "@/components/DocLayout";
 import { getMDXComponents } from "@/components/MDXComponents";
@@ -27,7 +28,23 @@ export default async function DocPage({ params }: PageProps) {
 
   return (
     <DocLayout meta={doc.meta} content={doc.content}>
-      <MDXRemote source={doc.content} components={getMDXComponents()} />
+      <MDXRemote
+        source={doc.content}
+        components={getMDXComponents()}
+        options={{
+          mdxOptions: {
+            rehypePlugins: [
+              [rehypePrettyCode, {
+                theme: {
+                  dark: "github-dark-default",
+                },
+                defaultLang: "bash",
+                keepBackground: false,
+              }],
+            ],
+          },
+        }}
+      />
     </DocLayout>
   );
 }

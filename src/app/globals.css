@@ -173,3 +173,46 @@ a, button {
 .callout-note .callout-title { color: #38bdf8; }
 .callout-tip .callout-title { color: #22c55e; }
 .callout-warning .callout-title { color: #eab308; }
+
+/* ── Syntax highlighting (rehype-pretty-code) ── */
+[data-rehype-pretty-code-figure] pre {
+  background: #0d1f38 !important;
+  border: 1px solid rgba(56, 189, 248, 0.1);
+  border-radius: 12px;
+  padding: 20px;
+  margin: 24px 0;
+  overflow-x: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+[data-rehype-pretty-code-figure] code {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  font-size: inherit;
+  color: #e2e8f0;
+}
+
+[data-rehype-pretty-code-figure] code [data-line] {
+  padding: 0 4px;
+}
+
+/* Title bar for code blocks */
+[data-rehype-pretty-code-title] {
+  background: rgba(10, 22, 40, 0.8);
+  border: 1px solid rgba(56, 189, 248, 0.1);
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+  padding: 8px 16px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: #64748b;
+}
+
+[data-rehype-pretty-code-title] + [data-rehype-pretty-code-figure] pre {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  margin-top: 0;
+}
