@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { MDXRemote } from "next-mdx-remote/rsc";
 import rehypePrettyCode from "rehype-pretty-code";
+import remarkGfm from "remark-gfm";
 import { getDocBySlug, getAllDocs, NAV_SECTIONS } from "@/lib/mdx";
 import DocLayout from "@/components/DocLayout";
 import { getMDXComponents } from "@/components/MDXComponents";
@@ -33,6 +34,7 @@ export default async function DocPage({ params }: PageProps) {
         components={getMDXComponents()}
         options={{
           mdxOptions: {
+            remarkPlugins: [remarkGfm],
             rehypePlugins: [
               [rehypePrettyCode, {
                 theme: {
