@@ -2,9 +2,18 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Recif Docs — Open-Source Agentic Platform",
+  title: {
+    default: "Récif Docs",
+    template: "%s — Récif Docs",
+  },
   description:
-    "Documentation for Recif, the open-source platform to govern, deploy, and operate AI agents.",
+    "Documentation for Récif, the open-source platform to govern, deploy, and operate AI agents at scale.",
+  keywords: ["AI agents", "agentic platform", "MLOps", "Kubernetes", "open-source", "governance"],
+  openGraph: {
+    title: "Récif Docs",
+    description: "Open-source platform to govern, deploy, and operate AI agents.",
+    type: "website",
+  },
 };
 
 export default function RootLayout({

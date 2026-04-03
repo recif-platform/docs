@@ -2,14 +2,38 @@ import React from "react";
 import type { MDXComponents as MDXComponentsType } from "mdx/types";
 import { Tabs, TabItem, Steps } from "./ClientComponents";
 
+/* ── Icons for callouts ── */
+function InfoIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <circle cx="8" cy="8" r="6.5" />
+      <path d="M8 7v4" strokeLinecap="round" />
+      <circle cx="8" cy="5" r="0.5" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function LightbulbIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M6 13h4M6.5 14h3M8 1.5a4.5 4.5 0 00-1.5 8.74V12h3v-1.76A4.5 4.5 0 008 1.5z" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function WarningIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M8 1.5L1 14h14L8 1.5z" strokeLinejoin="round" />
+      <path d="M8 6v3.5" strokeLinecap="round" />
+      <circle cx="8" cy="11.5" r="0.5" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 /* ── Heading with anchor ── */
 function createHeading(level: 1 | 2 | 3) {
   const Tag = `h${level}` as const;
-  const styles: Record<number, string> = {
-    1: "text-3xl font-bold mt-10 mb-4 text-text-primary",
-    2: "text-2xl font-semibold mt-10 mb-4 text-text-primary border-b border-panel-border pb-2",
-    3: "text-xl font-semibold mt-8 mb-3 text-text-primary",
-  };
 
   function Heading({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
     const text = typeof children === "string" ? children : "";
@@ -20,8 +44,27 @@ function createHeading(level: 1 | 2 | 3) {
         .replace(/[^a-z0-9\s-]/g, "")
         .replace(/\s+/g, "-");
 
+    const baseStyles = "text-text-primary tracking-tight";
+
+    const levelStyles: Record<number, { className: string; style?: React.CSSProperties }> = {
+      1: {
+        className: `${baseStyles} text-3xl font-bold mt-10 mb-4`,
+      },
+      2: {
+        className: `${baseStyles} text-[1.4rem] font-semibold mt-10 mb-4 pb-2.5`,
+        style: {
+          borderBottom: '1px solid rgba(56, 189, 248, 0.08)',
+        },
+      },
+      3: {
+        className: `${baseStyles} text-lg font-semibold mt-8 mb-3`,
+      },
+    };
+
+    const config = levelStyles[level];
+
     return (
-      <Tag id={id} className={styles[level]} {...props}>
+      <Tag id={id} className={config.className} style={config.style} {...props}>
         {children}
         <a href={`#${id}`} className="heading-anchor" aria-hidden="true">
           #
@@ -57,6 +100,12 @@ function stripMarker(children: React.ReactNode, marker: string): React.ReactNode
   return children;
 }
 
+const calloutIcons: Record<string, React.ReactNode> = {
+  note: <InfoIcon />,
+  tip: <LightbulbIcon />,
+  warning: <WarningIcon />,
+};
+
 function Blockquote({ children }: { children?: React.ReactNode }) {
   const text = extractText(children);
 
@@ -70,7 +119,10 @@ function Blockquote({ children }: { children?: React.ReactNode }) {
     if (text.includes(marker)) {
       return (
         <div className={`callout callout-${config.type}`}>
-          <p className="callout-title">{config.label}</p>
+          <p className="callout-title">
+            {calloutIcons[config.type]}
+            {config.label}
+          </p>
           <div className="text-sm text-text-secondary leading-relaxed">
             {stripMarker(children, marker)}
           </div>
@@ -80,7 +132,12 @@ function Blockquote({ children }: { children?: React.ReactNode }) {
   }
 
   return (
-    <blockquote className="border-l-3 border-reef-blue/40 pl-4 my-6 text-text-secondary italic">
+    <blockquote
+      className="pl-4 my-6 text-text-secondary italic"
+      style={{
+        borderLeft: '3px solid rgba(56, 189, 248, 0.25)',
+      }}
+    >
       {children}
     </blockquote>
   );
@@ -96,7 +153,8 @@ export function getMDXComponents(): MDXComponentsType {
     a: ({ href, children, ...props }) => (
       <a
         href={href}
-        className="text-reef-cyan hover:text-reef-cyan/80 underline underline-offset-2 decoration-reef-cyan/30"
+        className="link-animated"
+        style={{ color: '#22d3ee' }}
         target={href?.startsWith("http") ? "_blank" : undefined}
         rel={href?.startsWith("http") ? "noopener noreferrer" : undefined}
         {...props}
@@ -105,54 +163,85 @@ export function getMDXComponents(): MDXComponentsType {
       </a>
     ),
     p: ({ children, ...props }) => (
-      <p className="my-4 text-text-secondary leading-7" {...props}>
+      <p className="my-4 text-text-secondary leading-7 text-[15px]" {...props}>
         {children}
       </p>
     ),
     ul: ({ children, ...props }) => (
-      <ul className="my-4 ml-4 space-y-2 list-disc text-text-secondary marker:text-text-muted" {...props}>
+      <ul className="my-4 ml-4 space-y-2 list-disc text-text-secondary reef-list" style={{ }} {...props}>
         {children}
       </ul>
     ),
     ol: ({ children, ...props }) => (
-      <ol className="my-4 ml-4 space-y-2 list-decimal text-text-secondary marker:text-text-muted" {...props}>
+      <ol className="my-4 ml-4 space-y-2 list-decimal text-text-secondary" style={{ }} {...props}>
         {children}
       </ol>
     ),
     li: ({ children, ...props }) => (
-      <li className="leading-7" {...props}>
+      <li className="leading-7 text-[15px]" {...props}>
         {children}
       </li>
     ),
     table: ({ children, ...props }) => (
-      <div className="my-6 overflow-x-auto reef-glass">
+      <div
+        className="my-6 overflow-x-auto rounded-xl"
+        style={{
+          background: 'rgba(10, 24, 45, 0.7)',
+          border: '1px solid rgba(56, 189, 248, 0.1)',
+          backdropFilter: 'blur(12px)',
+          boxShadow: '0 4px 24px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(34, 211, 238, 0.04)',
+        }}
+      >
         <table className="w-full text-sm" {...props}>
           {children}
         </table>
       </div>
     ),
     thead: ({ children, ...props }) => (
-      <thead className="border-b border-panel-border bg-ocean-mid/50" {...props}>
+      <thead
+        style={{
+          background: 'rgba(13, 31, 56, 0.5)',
+          borderBottom: '1px solid rgba(56, 189, 248, 0.08)',
+          position: 'sticky' as const,
+          top: 0,
+        }}
+        {...props}
+      >
         {children}
       </thead>
     ),
     th: ({ children, ...props }) => (
       <th
-        className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted"
+        className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-text-muted"
         {...props}
       >
         {children}
       </th>
     ),
+    tr: ({ children, ...props }) => (
+      <tr className="reef-table-row" {...props}>
+        {children}
+      </tr>
+    ),
     td: ({ children, ...props }) => (
-      <td className="px-4 py-3 text-text-secondary border-t border-panel-border" {...props}>
+      <td
+        className="px-4 py-3 text-[13.5px] text-text-secondary"
+        style={{ borderTop: '1px solid rgba(56, 189, 248, 0.05)' }}
+        {...props}
+      >
         {children}
       </td>
     ),
     pre: ({ children, ...props }: React.HTMLAttributes<HTMLPreElement>) => (
       <pre
-        className="my-6 overflow-x-auto rounded-xl border border-panel-border bg-ocean-mid p-5 text-sm leading-relaxed"
-        style={{ fontFamily: "'JetBrains Mono', monospace" }}
+        className="my-6 overflow-x-auto rounded-xl p-5 text-sm leading-relaxed"
+        style={{
+          fontFamily: "'JetBrains Mono', monospace",
+          background: 'rgba(10, 24, 45, 0.7)',
+          border: '1px solid rgba(56, 189, 248, 0.1)',
+          backdropFilter: 'blur(8px)',
+          boxShadow: '0 4px 24px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(34, 211, 238, 0.04)',
+        }}
         {...props}
       >
         {children}
@@ -164,8 +253,14 @@ export function getMDXComponents(): MDXComponentsType {
       if (!isBlock) {
         return (
           <code
-            className="rounded bg-ocean-mid px-1.5 py-0.5 text-sm text-reef-cyan border border-panel-border"
-            style={{ fontFamily: "'JetBrains Mono', monospace" }}
+            className="rounded-md text-sm"
+            style={{
+              fontFamily: "'JetBrains Mono', monospace",
+              background: 'rgba(13, 31, 56, 0.8)',
+              border: '1px solid rgba(56, 189, 248, 0.12)',
+              padding: '0.15em 0.45em',
+              color: '#22d3ee',
+            }}
             {...props}
           >
             {children}
@@ -178,13 +273,25 @@ export function getMDXComponents(): MDXComponentsType {
         </code>
       );
     },
-    hr: () => <hr className="my-8 border-panel-border" />,
+    hr: () => (
+      <hr
+        className="my-10 reef-hr"
+      />
+    ),
     img: ({ alt, ...props }) => (
       // eslint-disable-next-line @next/next/no-img-element
-      <img alt={alt || ""} className="rounded-lg border border-panel-border my-6" {...props} />
+      <img
+        alt={alt || ""}
+        className="rounded-xl my-6"
+        style={{
+          border: '1px solid rgba(56, 189, 248, 0.1)',
+          boxShadow: '0 4px 24px rgba(0, 0, 0, 0.2)',
+        }}
+        {...props}
+      />
     ),
     strong: ({ children, ...props }) => (
-      <strong className="font-semibold text-text-primary" {...props}>
+      <strong className="font-semibold" style={{ color: '#f1f5f9' }} {...props}>
         {children}
       </strong>
     ),
