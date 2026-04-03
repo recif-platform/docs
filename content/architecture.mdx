@@ -5,7 +5,9 @@ description: "How Récif components fit together — two-layer architecture, Kub
 
 ## High-Level Overview
 
-Récif separates **governance** (platform) from **execution** (agents). Agents are autonomous containers; Récif is the control tower that watches, evaluates, and governs them.
+Récif separates **governance** (platform) from **execution** (agents). Agents are autonomous — they run independently with their own LLM, tools, and channels. Récif is the control tower that optionally watches, evaluates, and governs them.
+
+> [!NOTE] **Key insight**: Corail agents work standalone (direct REST/Slack/CLI access) OR through the Récif platform (dashboard, governance, eval). Same agent, two access paths, no code changes. See [Introduction — Two Ways to Use Récif](/docs/introduction#two-ways-to-use-rcif) for details.
 
 ![Architecture Overview](/docs/diagrams/architecture-overview.svg)
 

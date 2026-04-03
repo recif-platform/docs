@@ -1,62 +1,107 @@
 ---
 title: "Introduction"
-description: "Recif is the open-source platform to govern, deploy, and operate AI agents — any framework, any cloud."
+description: "Récif is the open-source platform to govern, deploy, and operate AI agents — any framework, any cloud."
 ---
 
-## What is Recif?
+## What is Récif?
 
-Recif is an **open-source agentic platform** that separates _how you build agents_ from _how you deploy and manage them_. It provides enterprise-grade governance, evaluation, and operations for AI agents — regardless of the framework or cloud provider you use.
+Récif is an **open-source agentic platform** that separates _how you build agents_ from _how you deploy and manage them_. It provides enterprise-grade governance, evaluation, and operations for AI agents — regardless of the framework or cloud provider you use.
 
-The platform is built on two layers:
+The platform is built on two independent layers:
 
-- **Recif** (the reef) — the governance and operations layer. A Go backend + Next.js dashboard that handles agent registry, deployments, evaluation, RBAC, monitoring, and GitOps.
-- **Corail** (the coral) — the runtime and connector layer. A Python runtime that plugs into any agent framework (ADK, LangChain, CrewAI, or custom), connects channels, wires tools/MCP, LLMs, memory, and knowledge bases.
+- **Corail** (the coral) — an autonomous Python agent runtime. Each agent runs in its own container with its own LLM, tools, memory, and channels. Corail works **standalone** — no platform required.
+- **Récif** (the reef) — the governance and operations layer. A Go API + Next.js dashboard that adds evaluation, releases, governance, monitoring, and multi-tenancy on top of your agents.
 
-> [!TIP] Think of it this way: you build your agent however you want. Recif makes sure it runs safely, scales properly, and stays accountable.
+> [!TIP] Think of it like Docker and Kubernetes. Docker (Corail) runs containers independently. Kubernetes (Récif) orchestrates and governs them at scale. You can use one without the other, but together they're powerful.
 
-## Why Recif?
+## Two Ways to Use Récif
 
-The AI agent ecosystem has excellent _building_ frameworks — LangChain, CrewAI, Google ADK, Semantic Kernel — but no open-source _operations_ platform. Organizations face real challenges:
+This is the key insight: **Corail agents are autonomous**. They don't need Récif to run. This enables two distinct deployment models that serve different needs:
 
-- **No governance**: who approved this agent? What can it access? What happens when it hallucinates?
-- **No evaluation pipeline**: how do you know if v2 is better than v1 before users see it?
-- **Framework lock-in**: switching from LangChain to ADK means rewriting everything.
-- **No multi-tenancy**: teams share infrastructure but need isolation.
-- **No deployment safety**: canary releases, rollback, A/B testing for agents.
+![Two Access Modes](/docs/diagrams/two-modes.svg)
 
-Recif solves all of these with a clean, Kubernetes-native architecture.
+### Mode 1: Direct Access — Developer / Integration
 
-## Core Capabilities
+Your application talks directly to the Corail agent. No platform in between. This is ideal for:
 
-| Capability | Description |
-|---|---|
-| **Agent Registry** | Versioned, metadata-rich catalog of all your agents |
-| **Agent-as-Code** | Declarative YAML configuration, GitOps-ready |
-| **Evaluation Pipeline** | MLflow-powered eval with 14+ scorers, quality gates, eval-gated releases |
-| **Governance** | Risk profiles, deny-by-default guards, PII detection, budget limits |
-| **Canary Deployments** | Blue/green, canary, A/B testing with auto-rollback via Istio |
-| **Multi-Tenancy** | Namespace-per-team isolation, RBAC, resource quotas |
-| **Knowledge Bases** | Maree ingestion pipeline with pgvector, evaluation-first approach |
-| **Agent Radar** | Health monitoring, drift detection, cost tracking, alerts |
-| **Framework Agnostic** | Works with ADK, LangChain, CrewAI, or bring your own |
+- **Developers** building an AI feature into their app
+- **API integrations** — your backend calls the agent's REST API
+- **Slack/Discord bots** — the agent connects its own channel
+- **CI/CD pipelines** — automated agents triggered by events
+
+```
+Your App → Corail Agent (port 8000) → LLM → Response
+```
+
+Each agent exposes its own REST API, SSE streaming, and channel connectors. It handles its own tools, memory, and knowledge bases. Zero dependency on the platform.
+
+### Mode 2: Platform Access — Enterprise / Mass Adoption
+
+Users interact through the Récif dashboard or API. The platform proxies requests to agents and adds governance, monitoring, and evaluation. This is ideal for:
+
+- **Enterprise adoption** — give every employee access to AI agents through a single portal
+- **Multi-team environments** — each team has its own namespace, agents, and permissions
+- **Production governance** — eval-gated releases, canary deployments, quality gates
+- **Compliance** — audit trails, cost tracking, guardrail policies
+
+```
+User → Récif Dashboard/API (port 8080) → proxy → Corail Agent → LLM → Response
+              │
+              └── Governance, Eval, Monitoring, Feedback, Releases
+```
+
+The platform adds:
+- **Authentication & RBAC** — who can access which agents
+- **Evaluation pipeline** — 14 MLflow scorers gate every release
+- **Canary deployments** — 10% → 50% → 100% with quality gates
+- **Feedback loop** — user thumbs up/down feeds back into evaluation datasets
+- **AI Radar** — fleet-wide health monitoring and alerts
+- **GitOps releases** — every config change is a versioned, auditable artifact
+
+### The Best of Both Worlds
+
+The magic is that **both modes coexist**. The same agent can be accessed directly by a CI/CD pipeline AND through the platform dashboard by employees. Récif doesn't lock you in — it layers governance on top of autonomous agents.
+
+| | Direct (Corail only) | Platform (Récif + Corail) |
+|---|---|---|
+| **Setup** | `docker run corail` | `helm install recif` |
+| **Auth** | None or custom | JWT, RBAC, multi-tenant |
+| **Channels** | REST, Slack, CLI, WebSocket | All channels + Dashboard UI |
+| **Evaluation** | Manual | 14 automated scorers, eval-gated releases |
+| **Governance** | None | Scorecards, policies, risk profiles |
+| **Monitoring** | Logs | AI Radar, MLflow traces, cost tracking |
+| **Releases** | Manual deploy | GitOps, canary, auto-rollback |
+| **Multi-tenant** | Single namespace | Namespace-per-team, RBAC |
+| **Best for** | Developers, integrations | Enterprise, compliance, mass adoption |
+
+> [!NOTE] You don't have to choose upfront. Start with Corail standalone, add Récif when you need governance. The agent code doesn't change.
 
 ## Architecture at a Glance
 
 ![Architecture Overview](/docs/diagrams/architecture-overview.svg)
 
-Each agent runs as a Kubernetes Pod with its own Corail runtime + Istio sidecar. Recif manages them through a kubebuilder operator that reconciles Agent CRDs.
+Each agent runs as a Kubernetes Pod with its own Corail runtime. Récif manages them through a kubebuilder operator that reconciles Agent CRDs into Deployments, Services, and ConfigMaps.
 
-## Key Design Principles
+## Core Capabilities
 
-1. **Framework-agnostic** — never force a specific agent framework. Corail adapts to yours.
-2. **Eval-driven** — every release passes through quality gates before reaching production.
-3. **GitOps-native** — agent config is stored in a Git repo (`recif-state`), enabling full audit trail and ArgoCD integration.
-4. **Kubernetes-native** — built on CRDs, operators, Istio, and Helm. One-command install.
-5. **Pluggable everything** — bring your own LLM, vector DB, memory backend, embedding model, or evaluation framework.
+| Capability | Description |
+|---|---|
+| **Autonomous Agents** | Each agent is a standalone container — runs independently with its own LLM, tools, memory |
+| **7 LLM Providers** | OpenAI, Anthropic, Google AI, Vertex AI, Ollama, Bedrock, custom |
+| **Multi-Channel** | REST API, Slack, Google Chat, CLI, WebSocket — per agent |
+| **Evaluation Pipeline** | 14 MLflow scorers, golden datasets, LLM-as-judge, eval-gated releases |
+| **Canary Deployments** | Champion/challenger with Flagger quality gates, auto-promote/rollback |
+| **Governance** | 4-dimension scorecards, guardrail policies, risk profiles |
+| **Multi-Tenancy** | Namespace-per-team, RBAC (4 roles), resource isolation |
+| **GitOps Releases** | Immutable YAML artifacts in Git, full audit trail, ArgoCD-ready |
+| **Knowledge Bases** | Marée ingestion pipeline, pgvector, Docling extraction |
+| **AI Radar** | Fleet health monitoring, drift detection, cost tracking |
+| **Framework Agnostic** | ADK, LangChain, CrewAI, or bring your own |
+| **MCP Tools** | Native MCP support alongside HTTP, CLI, and builtin tools |
 
 ## Next Steps
 
-- [Quickstart](/docs/quickstart) — install Recif and deploy your first agent in 5 minutes
+- [Quickstart](/docs/quickstart) — install Récif and deploy your first agent in 10 minutes
 - [Architecture](/docs/architecture) — deep dive into the two-layer architecture
-- [Create an Agent](/docs/guides/create-agent) — step-by-step guide to creating your first agent
 - [LLM Providers](/docs/guides/llm-providers) — configure OpenAI, Ollama, Vertex AI, and more
+- [Evaluation Guide](/docs/guides/evaluation) — the eval-driven lifecycle explained

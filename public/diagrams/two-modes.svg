@@ -1,0 +1,105 @@
+<svg viewBox="0 0 800 420" xmlns="http://www.w3.org/2000/svg" font-family="Inter, sans-serif">
+  <defs>
+    <filter id="glow"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <marker id="arr" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#22d3ee"/>
+    </marker>
+    <marker id="arr-green" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#22c55e"/>
+    </marker>
+  </defs>
+
+  <rect width="800" height="420" rx="16" fill="#0a1628"/>
+
+  <!-- Title -->
+  <text x="400" y="30" text-anchor="middle" fill="#64748b" font-size="11" font-weight="600" letter-spacing="3" font-family="JetBrains Mono, monospace">TWO ACCESS MODES</text>
+
+  <!-- ══════ MODE 1: Direct ══════ -->
+  <text x="200" y="65" text-anchor="middle" fill="#22c55e" font-size="14" font-weight="700">Mode 1: Direct Access</text>
+  <text x="200" y="82" text-anchor="middle" fill="#64748b" font-size="10">Developer / Integration / CI-CD</text>
+
+  <!-- App box -->
+  <rect x="40" y="100" width="100" height="50" rx="10" fill="#0d1f38" stroke="rgba(34,197,94,0.25)" stroke-width="1"/>
+  <text x="90" y="122" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="600">Your App</text>
+  <text x="90" y="138" text-anchor="middle" fill="#64748b" font-size="9">or Slack bot</text>
+
+  <!-- Arrow -->
+  <line x1="140" y1="125" x2="195" y2="125" stroke="#22c55e" stroke-width="1.5" marker-end="url(#arr-green)"/>
+  <text x="167" y="118" text-anchor="middle" fill="#22c55e" font-size="8" font-family="JetBrains Mono, monospace">direct</text>
+
+  <!-- Corail Agent -->
+  <rect x="200" y="96" width="160" height="58" rx="10" fill="#0d1f38" stroke="rgba(34,197,94,0.3)" stroke-width="1.5"/>
+  <text x="280" y="118" text-anchor="middle" fill="#22c55e" font-size="13" font-weight="700">Corail Agent</text>
+  <text x="280" y="135" text-anchor="middle" fill="#64748b" font-size="10" font-family="JetBrains Mono, monospace">:8000 REST / SSE</text>
+  <text x="280" y="148" text-anchor="middle" fill="#94a3b8" font-size="9">LLM · Tools · Memory</text>
+
+  <!-- No platform label -->
+  <rect x="60" y="165" width="280" height="22" rx="6" fill="rgba(34,197,94,0.06)" stroke="rgba(34,197,94,0.15)" stroke-width="0.5"/>
+  <text x="200" y="180" text-anchor="middle" fill="#22c55e" font-size="9" font-weight="500">No platform required — agent is fully autonomous</text>
+
+  <!-- ══════ MODE 2: Platform ══════ -->
+  <text x="560" y="65" text-anchor="middle" fill="#22d3ee" font-size="14" font-weight="700">Mode 2: Platform Access</text>
+  <text x="560" y="82" text-anchor="middle" fill="#64748b" font-size="10">Enterprise / Mass Adoption / Governance</text>
+
+  <!-- User -->
+  <rect x="420" y="100" width="90" height="50" rx="10" fill="#0d1f38" stroke="rgba(34,211,238,0.25)" stroke-width="1"/>
+  <text x="465" y="122" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="600">Employee</text>
+  <text x="465" y="138" text-anchor="middle" fill="#64748b" font-size="9">Dashboard</text>
+
+  <!-- Arrow to Récif -->
+  <line x1="510" y1="125" x2="555" y2="125" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Récif API -->
+  <rect x="560" y="96" width="100" height="58" rx="10" fill="#0d1f38" stroke="rgba(34,211,238,0.3)" stroke-width="1.5"/>
+  <text x="610" y="115" text-anchor="middle" fill="#22d3ee" font-size="12" font-weight="700">Récif API</text>
+  <text x="610" y="130" text-anchor="middle" fill="#64748b" font-size="9" font-family="JetBrains Mono, monospace">Go :8080</text>
+  <text x="610" y="145" text-anchor="middle" fill="#94a3b8" font-size="8">Auth · RBAC</text>
+
+  <!-- Arrow to Corail -->
+  <line x1="660" y1="125" x2="700" y2="125" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="680" y="118" text-anchor="middle" fill="#22d3ee" font-size="8" font-family="JetBrains Mono, monospace">proxy</text>
+
+  <!-- Corail Agent (platform) -->
+  <rect x="705" y="100" width="80" height="50" rx="10" fill="#0d1f38" stroke="rgba(34,211,238,0.25)" stroke-width="1"/>
+  <text x="745" y="122" text-anchor="middle" fill="#22d3ee" font-size="11" font-weight="600">Corail</text>
+  <text x="745" y="138" text-anchor="middle" fill="#64748b" font-size="9" font-family="JetBrains Mono, monospace">:8000</text>
+
+  <!-- Platform governance layer below -->
+  <rect x="530" y="165" width="250" height="22" rx="6" fill="rgba(34,211,238,0.06)" stroke="rgba(34,211,238,0.15)" stroke-width="0.5"/>
+  <text x="655" y="180" text-anchor="middle" fill="#22d3ee" font-size="9" font-weight="500">+ Governance · Eval · Monitoring · Releases · Feedback</text>
+
+  <!-- ══════ DIVIDER ══════ -->
+  <line x1="400" y1="55" x2="400" y2="195" stroke="rgba(56,189,248,0.1)" stroke-width="1" stroke-dasharray="4 3"/>
+
+  <!-- ══════ BOTTOM: Best of both worlds ══════ -->
+  <rect x="40" y="215" width="720" height="185" rx="14" fill="rgba(13,31,56,0.5)" stroke="rgba(56,189,248,0.1)" stroke-width="1"/>
+  <text x="400" y="240" text-anchor="middle" fill="#e2e8f0" font-size="13" font-weight="700">Best of Both Worlds — Same Agent, Two Access Paths</text>
+
+  <!-- Central agent -->
+  <rect x="310" y="260" width="180" height="65" rx="12" fill="#0d1f38" stroke="rgba(167,139,250,0.3)" stroke-width="1.5" filter="url(#glow)"/>
+  <text x="400" y="283" text-anchor="middle" fill="#a78bfa" font-size="14" font-weight="700">HR Assistant</text>
+  <text x="400" y="300" text-anchor="middle" fill="#64748b" font-size="10" font-family="JetBrains Mono, monospace">Corail · gpt-4o · Slack · REST</text>
+  <text x="400" y="315" text-anchor="middle" fill="#94a3b8" font-size="9">tools · RAG · memory · guards</text>
+
+  <!-- Left: Direct access -->
+  <rect x="60" y="270" width="120" height="45" rx="8" fill="#0d1f38" stroke="rgba(34,197,94,0.2)" stroke-width="1"/>
+  <text x="120" y="290" text-anchor="middle" fill="#22c55e" font-size="10" font-weight="600">CI/CD Pipeline</text>
+  <text x="120" y="305" text-anchor="middle" fill="#64748b" font-size="9">REST API direct</text>
+  <line x1="180" y1="292" x2="310" y2="292" stroke="#22c55e" stroke-width="1.2" marker-end="url(#arr-green)" stroke-dasharray="5 3"/>
+
+  <!-- Right: Platform access -->
+  <rect x="620" y="270" width="120" height="45" rx="8" fill="#0d1f38" stroke="rgba(34,211,238,0.2)" stroke-width="1"/>
+  <text x="680" y="290" text-anchor="middle" fill="#22d3ee" font-size="10" font-weight="600">Dashboard</text>
+  <text x="680" y="305" text-anchor="middle" fill="#64748b" font-size="9">via Récif API</text>
+  <line x1="620" y1="292" x2="490" y2="292" stroke="#22d3ee" stroke-width="1.2" marker-end="url(#arr)"/>
+
+  <!-- Labels -->
+  <text x="245" y="348" text-anchor="middle" fill="#22c55e" font-size="9" font-weight="500">Developer integration</text>
+  <text x="245" y="362" text-anchor="middle" fill="#64748b" font-size="9">No governance overhead</text>
+
+  <text x="555" y="348" text-anchor="middle" fill="#22d3ee" font-size="9" font-weight="500">Enterprise adoption</text>
+  <text x="555" y="362" text-anchor="middle" fill="#64748b" font-size="9">Full governance + eval + monitoring</text>
+
+  <!-- Center bottom -->
+  <text x="400" y="395" text-anchor="middle" fill="#94a3b8" font-size="10">The same agent serves both — no code changes, no lock-in</text>
+</svg>
