@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 250" fill="none">
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap');
+    </style>
+    <filter id="glow-cyan" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+    <linearGradient id="bg-gradient" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0c1a30"/>
+      <stop offset="100%" stop-color="#0a1628"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="700" height="250" rx="16" fill="url(#bg-gradient)"/>
+
+  <!-- Outer cluster box -->
+  <rect x="16" y="16" width="668" height="218" rx="14" fill="none" stroke="rgba(56,189,248,0.1)" stroke-width="1.5" stroke-dasharray="6 3"/>
+
+  <!-- Cluster label -->
+  <rect x="30" y="6" width="170" height="20" rx="4" fill="#0a1628"/>
+  <text x="38" y="20" fill="#64748b" font-family="Inter, sans-serif" font-size="11" font-weight="500">Kubernetes Cluster</text>
+
+  <!-- ══════ Namespace 1: recif-system (cyan) ══════ -->
+  <rect x="30" y="38" width="155" height="182" rx="12" fill="#0d1f38" stroke="rgba(34,211,238,0.25)" stroke-width="1"/>
+  <rect x="30" y="38" width="155" height="4" rx="2" fill="#22d3ee" opacity="0.6"/>
+
+  <text x="108" y="62" text-anchor="middle" fill="#22d3ee" font-family="JetBrains Mono, monospace" font-size="10" font-weight="600">recif-system</text>
+  <text x="108" y="76" text-anchor="middle" fill="#475569" font-family="Inter, sans-serif" font-size="8">control plane</text>
+
+  <!-- Pod boxes -->
+  <rect x="44" y="88" width="126" height="28" rx="6" fill="#0a1628" stroke="rgba(56,189,248,0.12)" stroke-width="1"/>
+  <text x="57" y="106" fill="#e2e8f0" font-family="Inter, sans-serif" font-size="10">Récif API</text>
+  <text x="132" y="106" fill="#64748b" font-family="JetBrains Mono, monospace" font-size="8">:8080</text>
+
+  <rect x="44" y="122" width="126" height="28" rx="6" fill="#0a1628" stroke="rgba(56,189,248,0.12)" stroke-width="1"/>
+  <text x="57" y="140" fill="#e2e8f0" font-family="Inter, sans-serif" font-size="10">Operator</text>
+  <text x="132" y="140" fill="#64748b" font-family="JetBrains Mono, monospace" font-size="8">:8081</text>
+
+  <rect x="44" y="156" width="126" height="28" rx="6" fill="#0a1628" stroke="rgba(56,189,248,0.12)" stroke-width="1"/>
+  <text x="57" y="174" fill="#e2e8f0" font-family="Inter, sans-serif" font-size="10">Dashboard</text>
+  <text x="132" y="174" fill="#64748b" font-family="JetBrains Mono, monospace" font-size="8">:3000</text>
+
+  <rect x="44" y="190" width="126" height="22" rx="6" fill="#0a1628" stroke="rgba(56,189,248,0.12)" stroke-width="1"/>
+  <text x="57" y="205" fill="#94a3b8" font-family="Inter, sans-serif" font-size="9">EventBus</text>
+
+  <!-- ══════ Namespace 2: team-default (green) ══════ -->
+  <rect x="200" y="38" width="155" height="182" rx="12" fill="#0d1f38" stroke="rgba(34,197,94,0.25)" stroke-width="1"/>
+  <rect x="200" y="38" width="155" height="4" rx="2" fill="#22c55e" opacity="0.6"/>
+
+  <text x="278" y="62" text-anchor="middle" fill="#22c55e" font-family="JetBrains Mono, monospace" font-size="10" font-weight="600">team-default</text>
+  <text x="278" y="76" text-anchor="middle" fill="#475569" font-family="Inter, sans-serif" font-size="8">agent workloads</text>
+
+  <!-- Agent pods -->
+  <rect x="214" y="88" width="126" height="28" rx="6" fill="#0a1628" stroke="rgba(34,197,94,0.12)" stroke-width="1"/>
+  <circle cx="226" cy="102" r="4" fill="#22c55e" opacity="0.6"/>
+  <text x="236" y="106" fill="#e2e8f0" font-family="Inter, sans-serif" font-size="10">code-reviewer</text>
+
+  <rect x="214" y="122" width="126" height="28" rx="6" fill="#0a1628" stroke="rgba(34,197,94,0.12)" stroke-width="1"/>
+  <circle cx="226" cy="136" r="4" fill="#22c55e" opacity="0.6"/>
+  <text x="236" y="140" fill="#e2e8f0" font-family="Inter, sans-serif" font-size="10">hr-assistant</text>
+
+  <rect x="214" y="156" width="126" height="28" rx="6" fill="#0a1628" stroke="rgba(34,197,94,0.12)" stroke-width="1"/>
+  <circle cx="226" cy="170" r="4" fill="#22c55e" opacity="0.6"/>
+  <text x="236" y="174" fill="#e2e8f0" font-family="Inter, sans-serif" font-size="10">security-scan</text>
+
+  <rect x="214" y="190" width="126" height="22" rx="6" fill="#081220" stroke="rgba(34,197,94,0.08)" stroke-width="1" stroke-dasharray="3 2"/>
+  <text x="278" y="205" text-anchor="middle" fill="#475569" font-family="Inter, sans-serif" font-size="9">+ more pods...</text>
+
+  <!-- ══════ Namespace 3: mlflow-system (yellow) ══════ -->
+  <rect x="370" y="38" width="155" height="182" rx="12" fill="#0d1f38" stroke="rgba(234,179,8,0.25)" stroke-width="1"/>
+  <rect x="370" y="38" width="155" height="4" rx="2" fill="#eab308" opacity="0.6"/>
+
+  <text x="448" y="62" text-anchor="middle" fill="#eab308" font-family="JetBrains Mono, monospace" font-size="10" font-weight="600">mlflow-system</text>
+  <text x="448" y="76" text-anchor="middle" fill="#475569" font-family="Inter, sans-serif" font-size="8">eval &amp; traces</text>
+
+  <rect x="384" y="88" width="126" height="28" rx="6" fill="#0a1628" stroke="rgba(234,179,8,0.12)" stroke-width="1"/>
+  <text x="397" y="106" fill="#e2e8f0" font-family="Inter, sans-serif" font-size="10">MLflow Server</text>
+
+  <rect x="384" y="122" width="126" height="28" rx="6" fill="#0a1628" stroke="rgba(234,179,8,0.12)" stroke-width="1"/>
+  <text x="397" y="140" fill="#e2e8f0" font-family="Inter, sans-serif" font-size="10">Tracking</text>
+  <text x="476" y="140" fill="#64748b" font-family="JetBrains Mono, monospace" font-size="8">:5000</text>
+
+  <rect x="384" y="156" width="126" height="28" rx="6" fill="#0a1628" stroke="rgba(234,179,8,0.12)" stroke-width="1"/>
+  <text x="397" y="174" fill="#e2e8f0" font-family="Inter, sans-serif" font-size="10">Artifact Store</text>
+
+  <!-- ══════ Namespace 4: istio-system (purple) ══════ -->
+  <rect x="540" y="38" width="134" height="182" rx="12" fill="#0d1f38" stroke="rgba(167,139,250,0.25)" stroke-width="1"/>
+  <rect x="540" y="38" width="134" height="4" rx="2" fill="#a78bfa" opacity="0.6"/>
+
+  <text x="607" y="62" text-anchor="middle" fill="#a78bfa" font-family="JetBrains Mono, monospace" font-size="10" font-weight="600">istio-system</text>
+  <text x="607" y="76" text-anchor="middle" fill="#475569" font-family="Inter, sans-serif" font-size="8">service mesh</text>
+
+  <rect x="554" y="88" width="106" height="28" rx="6" fill="#0a1628" stroke="rgba(167,139,250,0.12)" stroke-width="1"/>
+  <text x="567" y="106" fill="#e2e8f0" font-family="Inter, sans-serif" font-size="10">Istiod</text>
+
+  <rect x="554" y="122" width="106" height="28" rx="6" fill="#0a1628" stroke="rgba(167,139,250,0.12)" stroke-width="1"/>
+  <text x="567" y="140" fill="#e2e8f0" font-family="Inter, sans-serif" font-size="10">Gateway</text>
+
+  <rect x="554" y="156" width="106" height="28" rx="6" fill="#0a1628" stroke="rgba(167,139,250,0.12)" stroke-width="1"/>
+  <text x="567" y="174" fill="#e2e8f0" font-family="Inter, sans-serif" font-size="10">Envoy</text>
+  <text x="567" y="174" fill="#94a3b8" font-family="JetBrains Mono, monospace" font-size="8" dx="38">sidecars</text>
+</svg>

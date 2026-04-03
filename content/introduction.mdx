@@ -42,29 +42,7 @@ Recif solves all of these with a clean, Kubernetes-native architecture.
 
 ## Architecture at a Glance
 
-```
-                    ┌─────────────────────────────────────┐
-                    │           Recif Platform             │
-                    │  ┌──────────┐  ┌──────────────────┐ │
-                    │  │ Dashboard │  │   Go API Server  │ │
-                    │  │ (Next.js) │  │  (Registry, Auth │ │
-                    │  └──────────┘  │   Eval, Deploy)  │ │
-                    │                └──────────────────┘ │
-                    │         ┌─────────────┐             │
-                    │         │  Kubernetes  │             │
-                    │         │  Operator    │             │
-                    │         └──────┬──────┘             │
-                    └────────────────┼────────────────────┘
-                                     │ manages
-                    ┌────────────────┼────────────────────┐
-                    │        Agent Pods (Corail)           │
-                    │  ┌─────────┐ ┌─────────┐ ┌───────┐ │
-                    │  │ Agent A │ │ Agent B │ │ Agent │ │
-                    │  │ (ADK)   │ │ (Lang-  │ │  (C)  │ │
-                    │  │ +Istio  │ │  Chain) │ │       │ │
-                    │  └─────────┘ └─────────┘ └───────┘ │
-                    └─────────────────────────────────────┘
-```
+![Architecture Overview](/docs/diagrams/architecture-overview.svg)
 
 Each agent runs as a Kubernetes Pod with its own Corail runtime + Istio sidecar. Recif manages them through a kubebuilder operator that reconciles Agent CRDs.
 

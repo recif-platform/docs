@@ -17,38 +17,7 @@ How do you know if a prompt change made your agent better or worse? How do you c
 
 Every release in Recif starts with status `pending_eval`. The release is not applied to production until an evaluation confirms it meets the quality threshold.
 
-```
-Config Change (prompt, model, tools, skills)
-    |
-    v
-Release Created (status: pending_eval)
-    |
-    v
-Evaluation Triggered
-    |
-    v
-MLflow GenAI runs scorers against golden dataset
-    |
-    v
-Scores computed (safety, relevance, correctness, ...)
-    |
-    v
-Average score compared to min_quality_score
-    |
-    +---> PASSED --> Release APPROVED (status: active)
-    |                  |
-    |                  v
-    |             current.yaml updated in recif-state
-    |             CRD patched in Kubernetes
-    |             Agent pod gets new config
-    |
-    +---> FAILED --> Release REJECTED (status: rejected)
-                       |
-                       v
-                  Previous version stays active
-                  Rejection reason logged
-                  Release archived with [REJECTED] tag
-```
+![Deployment Flow](/docs/diagrams/deployment-flow.svg)
 
 ## Detailed Flow
 

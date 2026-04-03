@@ -186,33 +186,7 @@ spec:
 
 The release lifecycle with evaluation gates:
 
-```
-Config Change
-    |
-    v
-Release Created (status: pending_eval)
-    |
-    v
-Evaluation Triggered --> Corail /control/evaluate
-    |
-    v
-Scores Computed (MLflow GenAI)
-    |
-    v
-Callback to Recif /eval-result
-    |
-    +---> avg >= min_quality_score --> APPROVED (status: active)
-    |                                   |
-    |                                   v
-    |                              current.yaml updated
-    |                              CRD patched in K8s
-    |
-    +---> avg < min_quality_score --> REJECTED (status: rejected)
-                                       |
-                                       v
-                                  Previous version stays active
-                                  Release marked with rejection reason
-```
+![Deployment Flow](/docs/diagrams/deployment-flow.svg)
 
 ## LLM-as-Judge Configuration
 

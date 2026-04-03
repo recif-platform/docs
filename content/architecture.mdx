@@ -7,45 +7,7 @@ description: "How Récif components fit together — two-layer architecture, Kub
 
 Récif separates **governance** (platform) from **execution** (agents). Agents are autonomous containers; Récif is the control tower that watches, evaluates, and governs them.
 
-```
-  ┌─────────────────────────────────────────────────────────────────┐
-  │                     Users & Channels                            │
-  │   Developer → REST API    Employee → Slack    Bot → Cron        │
-  └───────────┬────────────────────┬──────────────────┬─────────────┘
-              │                    │                   │
-              ▼                    ▼                   ▼
-  ┌─────────────────────────────────────────────────────────────────┐
-  │                Agent Layer  (team-default namespace)            │
-  │                                                                 │
-  │   ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐    │
-  │   │ Code Reviewer │  │ HR Assistant │  │ Security Scanner │    │
-  │   │ ADK  claude   │  │ Corail gpt4o│  │ CrewAI  claude   │    │
-  │   │ port 8000     │  │ port 8000    │  │ port 8000        │    │
-  │   └──────┬────────┘  └──────┬───────┘  └────────┬─────────┘    │
-  └──────────┼──────────────────┼────────────────────┼──────────────┘
-             │ telemetry        │ telemetry          │ telemetry
-             ▼                  ▼                    ▼
-  ┌─────────────────────────────────────────────────────────────────┐
-  │               Platform Layer  (recif-system namespace)         │
-  │                                                                 │
-  │  ┌──────────┐ ┌──────────┐ ┌───────────┐ ┌──────────────┐     │
-  │  │ Récif API│ │ Operator │ │ Dashboard │ │   EventBus   │     │
-  │  │ Go :8080 │ │kubebuildr│ │ Next :3000│ │  pub/sub     │     │
-  │  └────┬─────┘ └────┬─────┘ └─────┬─────┘ └──────────────┘     │
-  │       │             │             │                             │
-  │  Governance │ Evaluation │ Releases │ Radar │ Feedback          │
-  └───────────┬────────────────────┬──────────────────────────────┘
-              │                    │
-              ▼                    ▼
-  ┌─────────────────────────────────────────────────────────────────┐
-  │                       Infrastructure                            │
-  │                                                                 │
-  │  ┌───────────┐  ┌──────────┐  ┌────────────┐  ┌──────────┐   │
-  │  │ PostgreSQL │  │  MLflow  │  │ recif-state│  │  Istio   │   │
-  │  │ + pgvector │  │ tracking │  │  Git repo  │  │  mesh    │   │
-  │  └───────────┘  └──────────┘  └────────────┘  └──────────┘   │
-  └─────────────────────────────────────────────────────────────────┘
-```
+![Architecture Overview](/docs/diagrams/architecture-overview.svg)
 
 ## Component Breakdown
 
@@ -64,100 +26,25 @@ Récif separates **governance** (platform) from **execution** (agents). Agents a
 
 What happens when a user sends a message:
 
-```
-1. User sends message via Dashboard or API
-        │
-        ▼
-2. Récif API receives POST /api/v1/agents/{id}/chat/stream
-        │
-        ▼
-3. API proxies to Corail agent pod (HTTP or gRPC)
-   http://{slug}.team-default.svc.cluster.local:8000
-        │
-        ▼
-4. Corail Pipeline:
-   ┌─────────────────────────────────────────────┐
-   │  Input → Guards → Strategy → LLM → Output  │
-   │              │         │                     │
-   │              │    ┌────┴────┐                │
-   │              │    │  Tools  │                │
-   │              │    │  Memory │                │
-   │              │    │  RAG    │                │
-   │              │    └─────────┘                │
-   └─────────────────────────────────────────────┘
-        │
-        ▼
-5. Response streamed back via SSE (Server-Sent Events)
-   Thinking blocks → Content tokens → Done event → Suggestions
-```
+![Request Flow](/docs/diagrams/request-flow.svg)
 
 ## Deployment Flow
 
 What happens when you deploy an agent:
 
-```
-1. Create Agent (Dashboard or API)
-   POST /api/v1/agents → DB record created
-        │
-        ▼
-2. Deploy → Agent CRD created in K8s
-   kubectl apply Agent CRD → team-default namespace
-        │
-        ▼
-3. Operator reconciles
-   ┌──────────────────────────────────┐
-   │  Agent CRD                       │
-   │    │                             │
-   │    ├──→ Deployment (Corail pod)  │
-   │    ├──→ Service (ClusterIP)      │
-   │    └──→ ConfigMap (env vars)     │
-   └──────────────────────────────────┘
-        │
-        ▼
-4. Release created → committed to recif-state Git repo
-   agents/{slug}/releases/v{N}.yaml
-        │
-        ▼
-5. Eval gate (if min_quality_score > 0)
-
-   status: pending_eval
-     │
-     ├──→ Corail evaluates (14 MLflow scorers)
-     │
-     ├──→ Score ≥ threshold → ✅ approved
-     │    Apply to K8s, write current.yaml
-     │
-     └──→ Score < threshold → ❌ rejected
-          Rollback, keep previous version
-```
+![Deployment Flow](/docs/diagrams/deployment-flow.svg)
 
 ## Evaluation-Driven Lifecycle
 
 The core differentiator: **no agent ships without proof**.
 
-```
-┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
-│  Ingest  │───→│ Dataset  │───→│ Evaluate │───→│  Gate    │
-│  (Marée) │    │ (Golden) │    │(14 score)│    │(approve/ │
-└──────────┘    └──────────┘    └──────────┘    │ reject)  │
-                     ▲                           └────┬─────┘
-                     │                                │
-                     │                                ▼
-┌──────────┐    ┌────┴─────┐    ┌──────────┐    ┌──────────┐
-│ Feedback │───→│ Append   │    │ Canary   │←───│ Release  │
-│ (👍/👎)  │    │to dataset│    │(10%→100%)│    │(GitOps)  │
-└──────────┘    └──────────┘    └──────────┘    └──────────┘
-                                     │
-                                     ▼
-                                ┌──────────┐
-                                │Production│
-                                │monitoring│
-                                └──────────┘
-```
+![Evaluation-Driven Lifecycle](/docs/diagrams/eval-lifecycle.svg)
 
 **14 MLflow Scorers**: Safety, Relevance, Correctness, Completeness, Fluency, Equivalence, Summarization, Guidelines, ExpectationsGuidelines, RetrievalRelevance, RetrievalGroundedness, RetrievalSufficiency, ToolCallCorrectness, ToolCallEfficiency.
 
 ## Namespace Layout
+
+![Namespace Layout](/docs/diagrams/namespace-layout.svg)
 
 | Namespace | What Runs | Purpose |
 |-----------|-----------|---------|
