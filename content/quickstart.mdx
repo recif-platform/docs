@@ -238,9 +238,64 @@ kubectl port-forward -n recif-system svc/recif-dashboard 3000:3000 &
 
 Open **http://localhost:3000** — you'll see your agent in the dashboard, ready to chat.
 
+## Optional: Canary Deployments
+
+To enable canary deployments (champion/challenger with traffic splitting), install Istio + Kiali:
+
+```bash
+# Requires: istioctl (brew install istioctl)
+./scripts/setup-istio.sh
+```
+
+This installs Istio (service mesh), Prometheus (metrics), and Kiali (mesh dashboard). After install:
+
+- Agent pods get an Istio sidecar automatically (2/2 containers)
+- You can deploy a challenger version alongside the champion
+- Flagger webhook queries MLflow eval scores to auto-promote or auto-rollback
+- Kiali shows the mesh traffic in real-time
+
+```bash
+# Kiali dashboard
+kubectl port-forward -n istio-system svc/kiali 20001:20001 &
+# Open http://localhost:20001
+```
+
+> [!NOTE] Istio adds ~500MB of images and 3 extra pods. Skip this step if you don't need canary deployments yet.
+
+See [Canary Deployments Guide](/docs/guides/canary-deployments) for the full workflow.
+
+## Alternative: Create Agent via API
+
+The quickstart above uses `kubectl apply` (CRD). You can also create agents via the Récif API, which registers the agent in the database and enables the full lifecycle (releases, evaluation, governance).
+
+```bash
+# Create agent
+curl -X POST http://localhost:8080/api/v1/agents \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My First Agent",
+    "description": "Created via API",
+    "framework": "corail",
+    "version": "0.1.0",
+    "model_type": "ollama",
+    "model_id": "qwen3.5:4b"
+  }'
+
+# Deploy (replace AGENT_ID with the id from the response)
+curl -X POST http://localhost:8080/api/v1/agents/AGENT_ID/deploy
+```
+
+The API flow gives you:
+- Agent in the Récif database (visible in dashboard)
+- Evaluation and release pipeline
+- Feedback loop (thumbs up/down)
+- Governance scorecards
+
+> [!TIP] Use the API for production workflows. Use `kubectl apply` for quick testing.
+
 ## What's Next?
 
-- [Create an Agent](/docs/guides/create-agent) — full CRD reference and configuration options
+- [Create an Agent](/docs/guides/create-agent) — full CRD reference and API options
 - [LLM Providers](/docs/guides/llm-providers) — detailed setup for each provider with security best practices
 - [Evaluation](/docs/guides/evaluation) — set up eval-gated releases with MLflow scorers
 - [Architecture](/docs/architecture) — understand how the pieces fit together
