@@ -14,13 +14,13 @@ The platform is built on two independent layers:
 
 > [!TIP] Think of it like Docker and Kubernetes. Docker (Corail) runs containers independently. Kubernetes (Récif) orchestrates and governs them at scale. You can use one without the other, but together they're powerful.
 
-## Two Ways to Use Récif
+## Two Access Paths — At the Same Time
 
-This is the key insight: **Corail agents are autonomous**. They don't need Récif to run. This enables two distinct deployment models that serve different needs:
+This is the key insight: **Corail agents are autonomous**. They don't need Récif to run. But they can also be governed by Récif. **Both happen simultaneously on the same agent** — this is not a choice between one or the other.
 
-![Two Access Modes](/docs/diagrams/two-modes.svg)
+![Both Access Paths](/docs/diagrams/two-modes.svg)
 
-### Mode 1: Direct Access — Developer / Integration
+### Direct Access — Developer / Integration
 
 Your application talks directly to the Corail agent. No platform in between. This is ideal for:
 
@@ -35,9 +35,9 @@ Your App → Corail Agent (port 8000) → LLM → Response
 
 Each agent exposes its own REST API, SSE streaming, and channel connectors. It handles its own tools, memory, and knowledge bases. Zero dependency on the platform.
 
-### Mode 2: Platform Access — Enterprise / Mass Adoption
+### Platform Access — Enterprise / Mass Adoption
 
-Users interact through the Récif dashboard or API. The platform proxies requests to agents and adds governance, monitoring, and evaluation. This is ideal for:
+At the same time, users can interact through the Récif dashboard or API. The platform proxies requests to the same agents and adds governance, monitoring, and evaluation. This is ideal for:
 
 - **Enterprise adoption** — give every employee access to AI agents through a single portal
 - **Multi-team environments** — each team has its own namespace, agents, and permissions
@@ -58,9 +58,9 @@ The platform adds:
 - **AI Radar** — fleet-wide health monitoring and alerts
 - **GitOps releases** — every config change is a versioned, auditable artifact
 
-### The Best of Both Worlds
+### Both Paths, One Agent
 
-The magic is that **both modes coexist**. The same agent can be accessed directly by a CI/CD pipeline AND through the platform dashboard by employees. Récif doesn't lock you in — it layers governance on top of autonomous agents.
+This is **not** a choice — both paths coexist on the same agent, at the same time. A CI/CD pipeline calls the agent directly via REST while an employee chats with it through the dashboard. The agent doesn't know or care which path the request came from. Récif layers governance on top without touching the agent code.
 
 | | Direct (Corail only) | Platform (Récif + Corail) |
 |---|---|---|
