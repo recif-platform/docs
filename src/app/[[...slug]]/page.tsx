@@ -37,9 +37,7 @@ export default async function DocPage({ params }: PageProps) {
             remarkPlugins: [remarkGfm],
             rehypePlugins: [
               [rehypePrettyCode, {
-                theme: {
-                  dark: "github-dark-default",
-                },
+                theme: "github-dark-default",
                 defaultLang: "bash",
                 keepBackground: false,
               }],

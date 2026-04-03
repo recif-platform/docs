@@ -232,47 +232,7 @@ export function getMDXComponents(): MDXComponentsType {
         {children}
       </td>
     ),
-    pre: ({ children, ...props }: React.HTMLAttributes<HTMLPreElement>) => (
-      <pre
-        className="my-6 overflow-x-auto rounded-xl p-5 text-sm leading-relaxed"
-        style={{
-          fontFamily: "'JetBrains Mono', monospace",
-          background: 'rgba(10, 24, 45, 0.7)',
-          border: '1px solid rgba(56, 189, 248, 0.1)',
-          backdropFilter: 'blur(8px)',
-          boxShadow: '0 4px 24px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(34, 211, 238, 0.04)',
-        }}
-        {...props}
-      >
-        {children}
-      </pre>
-    ),
-    code: ({ children, className, ...props }: React.HTMLAttributes<HTMLElement>) => {
-      // Inline code (no className and no data-language = not from rehype-pretty-code)
-      const isBlock = className || (props as Record<string, unknown>)["data-language"];
-      if (!isBlock) {
-        return (
-          <code
-            className="rounded-md text-sm"
-            style={{
-              fontFamily: "'JetBrains Mono', monospace",
-              background: 'rgba(13, 31, 56, 0.8)',
-              border: '1px solid rgba(56, 189, 248, 0.12)',
-              padding: '0.15em 0.45em',
-              color: '#22d3ee',
-            }}
-            {...props}
-          >
-            {children}
-          </code>
-        );
-      }
-      return (
-        <code className={className} {...props}>
-          {children}
-        </code>
-      );
-    },
+    // pre and code are handled by rehype-pretty-code + CSS — do NOT override here
     hr: () => (
       <hr
         className="my-10 reef-hr"
