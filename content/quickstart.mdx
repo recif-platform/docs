@@ -1,177 +1,243 @@
 ---
 title: "Quickstart"
-description: "Install Recif and deploy your first AI agent in under 5 minutes."
+description: "From zero to a running AI agent in 10 minutes."
 ---
 
 ## Prerequisites
 
-Before you begin, make sure you have:
-
-- **Kubernetes cluster** (v1.28+) — local (Colima, Minikube, kind) or cloud (GKE, EKS, AKS)
+- **Kubernetes cluster** (v1.28+) — [Colima](https://github.com/abiosoft/colima) (Mac), [Kind](https://kind.sigs.k8s.io/) (Linux), or any cloud K8s
 - **Helm** (v3.12+)
 - **kubectl** configured for your cluster
-- An LLM provider API key (OpenAI, or a local Ollama instance)
-
-> [!TIP] For local development, we recommend Colima with Kubernetes enabled. It gives you a full K8s cluster on your Mac with minimal setup.
-
-## Step 1: Install Recif
-
-Add the Recif Helm repository and install the platform:
 
 ```bash
-# Add the Helm repo
-helm repo add recif https://charts.recif.dev
-helm repo update
-
-# Install Recif in its own namespace
-helm install recif recif/recif \
-  --namespace recif-system \
-  --create-namespace \
-  --set global.domain=localhost
+# Mac — quickest local setup
+colima start --kubernetes --cpu 4 --memory 8
 ```
 
-This deploys:
-- Recif API server (Go)
-- Recif Dashboard (Next.js)
-- Kubernetes Operator (kubebuilder)
-- PostgreSQL (for agent registry, conversations, audit)
-- Istio configuration (if Istio is installed)
+## Step 1: Install Récif
 
-Verify the installation:
+```bash
+helm install recif oci://ghcr.io/recif-platform/helm-charts/recif \
+  --namespace recif-system --create-namespace \
+  --set ollama.enabled=false
+```
+
+> [!NOTE] We disable Ollama in the cluster by default. Most developers connect to their own LLM provider (see Step 2).
+
+Verify everything is running:
 
 ```bash
 kubectl get pods -n recif-system
 ```
 
-You should see all pods running:
+You should see: `recif-api`, `recif-operator`, `recif-dashboard`, `recif-postgresql` — all Running.
 
-```
-NAME                              READY   STATUS    RESTARTS   AGE
-recif-api-6d4f8b7c9-x2k4m        1/1     Running   0          45s
-recif-dashboard-7f5a9b3d1-n8j2p  1/1     Running   0          45s
-recif-operator-5c8e2a6f4-q9w7r   1/1     Running   0          45s
-recif-postgres-0                  1/1     Running   0          45s
-```
+## Step 2: Choose Your LLM Provider
 
-## Step 2: Configure Your LLM Provider
+Pick the provider you want to use. Each one requires different credentials.
 
-Create a secret with your LLM provider credentials:
+---
+
+### OpenAI
+
+Best for: getting started fast, strong reasoning, tool use.
 
 ```bash
-# For OpenAI
-kubectl create secret generic llm-openai \
-  --namespace recif-system \
-  --from-literal=api-key=sk-your-key-here
-
-# For Ollama (local)
-# No secret needed — Ollama runs locally on port 11434
+# Create a secret with your API key
+kubectl create namespace team-default
+kubectl create secret generic openai-credentials \
+  --namespace team-default \
+  --from-literal=OPENAI_API_KEY=sk-proj-your-key-here
 ```
+
+Your agent config will use:
+```yaml
+modelType: openai
+modelId: gpt-4o-mini          # or gpt-4o, o3-mini
+envSecrets: [openai-credentials]
+```
+
+Get your key → [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
+
+---
+
+### Anthropic
+
+Best for: long context, careful reasoning, native tool use.
+
+```bash
+kubectl create namespace team-default
+kubectl create secret generic anthropic-credentials \
+  --namespace team-default \
+  --from-literal=ANTHROPIC_API_KEY=sk-ant-your-key-here
+```
+
+Your agent config will use:
+```yaml
+modelType: anthropic
+modelId: claude-sonnet-4-20250514    # or claude-haiku
+envSecrets: [anthropic-credentials]
+```
+
+Get your key → [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys)
+
+---
+
+### Google AI (Gemini)
+
+Best for: free tier, fast, multimodal.
+
+```bash
+kubectl create namespace team-default
+kubectl create secret generic google-ai-credentials \
+  --namespace team-default \
+  --from-literal=GOOGLE_API_KEY=AIza-your-key-here
+```
+
+Your agent config will use:
+```yaml
+modelType: google-ai
+modelId: gemini-2.5-flash      # or gemini-2.5-pro
+envSecrets: [google-ai-credentials]
+```
+
+Get your key → [aistudio.google.com/apikey](https://aistudio.google.com/apikey) (free tier available)
+
+---
+
+### Ollama (Local)
+
+Best for: offline, free, data privacy. Requires Ollama installed on your machine.
+
+```bash
+# On your machine (not in K8s)
+ollama pull qwen3.5:4b
+ollama serve    # runs on port 11434
+```
+
+```bash
+kubectl create namespace team-default
+```
+
+Your agent config will use:
+```yaml
+modelType: ollama
+modelId: qwen3.5:4b
+# No secret needed — but set OLLAMA_BASE_URL in the agent config
+```
+
+> [!NOTE] Ollama runs on your machine, not in the cluster. The agent connects via `host.docker.internal:11434` (Colima/Docker Desktop) or your machine's IP.
+
+---
+
+### Vertex AI (Google Cloud)
+
+Best for: production, enterprise, GCP-native, billing controls.
+
+```bash
+# Create a GCP service account and download the key
+gcloud iam service-accounts keys create sa-key.json \
+  --iam-account=my-agent@my-project.iam.gserviceaccount.com
+
+kubectl create namespace team-default
+kubectl create secret generic my-agent-gcp-sa \
+  --namespace team-default \
+  --from-file=credentials.json=sa-key.json
+```
+
+Your agent config will use:
+```yaml
+modelType: vertex-ai
+modelId: gemini-2.5-flash
+gcpServiceAccount: "my-agent@my-project.iam.gserviceaccount.com"
+```
+
+See [LLM Providers Guide](/docs/guides/llm-providers) for full Vertex AI setup.
+
+---
+
+### AWS Bedrock
+
+Best for: AWS-native, enterprise, existing AWS infrastructure.
+
+```bash
+kubectl create namespace team-default
+kubectl create secret generic bedrock-credentials \
+  --namespace team-default \
+  --from-literal=AWS_ACCESS_KEY_ID=AKIA-your-key \
+  --from-literal=AWS_SECRET_ACCESS_KEY=your-secret \
+  --from-literal=AWS_REGION=us-east-1
+```
+
+Your agent config will use:
+```yaml
+modelType: bedrock
+modelId: anthropic.claude-sonnet-4-20250514-v1:0
+envSecrets: [bedrock-credentials]
+```
+
+---
 
 ## Step 3: Create Your First Agent
 
-Create an agent configuration file:
+Replace `modelType`, `modelId`, and `envSecrets` with your choice from Step 2.
 
 ```yaml
-# my-agent.yaml
-apiVersion: recif.dev/v1alpha1
+# agent.yaml
+apiVersion: agents.recif.dev/v1
 kind: Agent
 metadata:
   name: my-first-agent
-  namespace: recif-system
+  namespace: team-default
 spec:
-  displayName: "My First Agent"
-  description: "A helpful assistant powered by Recif"
-
-  runtime:
-    image: ghcr.io/sciences44/corail:latest
-    strategy: react
-
-  llm:
-    provider: openai
-    model: gpt-4o-mini
-    secretRef:
-      name: llm-openai
-      key: api-key
-
-  channels:
-    - type: rest
-      port: 8000
-
-  governance:
-    riskProfile: low
-    guards:
-      - pii-detection
-      - secrets-detection
-    budgetTokensPerDay: 100000
+  name: "My First Agent"
+  framework: corail
+  strategy: agent-react
+  channel: rest
+  modelType: openai                    # ← your provider
+  modelId: gpt-4o-mini                # ← your model
+  envSecrets:
+    - openai-credentials              # ← your secret name
+  image: ghcr.io/recif-platform/corail:v0.1.0
+  replicas: 1
 ```
 
-Apply it:
-
 ```bash
-kubectl apply -f my-agent.yaml
+kubectl apply -f agent.yaml
 ```
 
-The Recif operator will:
-1. Validate the agent configuration
-2. Create a Corail pod with your config
-3. Set up an Istio VirtualService for routing
-4. Register the agent in the platform registry
-
-## Step 4: Talk to Your Agent
-
-Once the pod is running, you can interact with your agent via the REST API:
+Wait for the agent to be ready:
 
 ```bash
-# Port-forward to the agent
-kubectl port-forward svc/my-first-agent 8000:8000 -n recif-system
+kubectl get pods -n team-default -w
+# Wait until STATUS = Running, READY = 1/1
+```
+
+## Step 4: Chat with Your Agent
+
+```bash
+# Port-forward the API
+kubectl port-forward -n recif-system svc/recif-api 8080:8080 &
 
 # Send a message
-curl -X POST http://localhost:8000/chat \
+curl -N http://localhost:8080/api/v1/agents/my-first-agent/chat/stream \
   -H "Content-Type: application/json" \
-  -d '{
-    "message": "Hello! What can you help me with?",
-    "conversation_id": "test-001"
-  }'
+  -d '{"input": "Hello! What can you do?"}'
 ```
 
-Or open the Recif Dashboard:
+You'll see SSE events streaming back with the agent's response.
+
+## Step 5: Open the Dashboard
 
 ```bash
-kubectl port-forward svc/recif-dashboard 3000:3000 -n recif-system
-# Open http://localhost:3000
+kubectl port-forward -n recif-system svc/recif-dashboard 3000:3000 &
 ```
 
-## Step 5: Run an Evaluation
-
-Before promoting your agent to production, run an evaluation:
-
-```bash
-# Using the Recif CLI
-recif eval run my-first-agent \
-  --dataset golden-qa.json \
-  --scorers correctness,relevance,faithfulness
-```
-
-The evaluation pipeline will:
-1. Run your agent against the test dataset
-2. Score responses using MLflow GenAI scorers
-3. Compare against quality thresholds
-4. Gate the release (pass/fail)
-
-Check results in the dashboard or via CLI:
-
-```bash
-recif eval results my-first-agent --latest
-```
+Open **http://localhost:3000** — you'll see your agent in the dashboard, ready to chat.
 
 ## What's Next?
 
-You now have a running Recif installation with your first agent. Here is where to go from here:
-
-- [Architecture](/docs/architecture) — understand the full platform architecture
-- [Create an Agent](/docs/guides/create-agent) — detailed guide with all configuration options
-- [LLM Providers](/docs/guides/llm-providers) — configure different LLM backends
-- [Evaluation](/docs/guides/evaluation) — set up eval-driven releases
-- [Governance](/docs/guides/governance) — configure risk profiles and guards
-
-> [!NOTE] Recif is under active development. Some features described in these docs may be in preview or coming soon. Check the GitHub releases for the latest status.
+- [Create an Agent](/docs/guides/create-agent) — full CRD reference and configuration options
+- [LLM Providers](/docs/guides/llm-providers) — detailed setup for each provider with security best practices
+- [Evaluation](/docs/guides/evaluation) — set up eval-gated releases with MLflow scorers
+- [Architecture](/docs/architecture) — understand how the pieces fit together
