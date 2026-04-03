@@ -1,17 +1,135 @@
 ---
 title: "Environment Variables"
-description: "Complete reference of all environment variables used by Recif and Corail components."
+description: "Complete reference of all environment variables used by the Corail agent runtime."
 ---
 
 ## Overview
 
-This page documents all environment variables that configure Recif platform components and Corail agent runtime. Variables are organized by component.
+The Corail runtime is configured entirely via environment variables. All variables use the `CORAIL_` prefix and are defined in the `Settings` class using Pydantic. Additional variables for LLM providers and evaluation follow their respective conventions.
 
-> [!NOTE] This page is under active development. Full reference coming soon.
+## Core Runtime
 
-## Categories
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CORAIL_CHANNEL` | `rest` | Communication channel. Currently supports `rest` (HTTP API). |
+| `CORAIL_STRATEGY` | `agent-react` | Agent strategy. Options: `simple`, `agent-react`. |
+| `CORAIL_MODEL_TYPE` | `stub` | LLM provider key. Options: `stub`, `ollama`, `openai`, `anthropic`, `vertex-ai`, `bedrock`, `google-ai`. |
+| `CORAIL_MODEL_ID` | `stub-echo` | Model identifier for the chosen provider. See model defaults table below. |
+| `CORAIL_SYSTEM_PROMPT` | `You are a helpful assistant.` | The system instruction set for the agent. |
+| `CORAIL_ENV` | `dev` | Environment name: `dev`, `staging`, `production`. |
+| `CORAIL_LOG_LEVEL` | `INFO` | Logging level: `DEBUG`, `INFO`, `WARNING`, `ERROR`. |
+| `CORAIL_LOG_FORMAT` | `json` | Log output format: `json` or `text`. |
 
-- **Recif API Server** — database connection, auth secrets, MLflow URL, gRPC ports
-- **Recif Operator** — reconciliation interval, namespace watch, CRD settings
-- **Corail Runtime** — LLM config, tool endpoints, memory backend, channel ports
-- **Maree Ingestion** — embedding model, vector store, staging config
+### Model Type Defaults
+
+When `CORAIL_MODEL_ID` is empty, the factory uses these defaults:
+
+| Model Type | Default Model ID |
+|-----------|-----------------|
+| `stub` | `stub-echo` |
+| `ollama` | `qwen3.5:35b` |
+| `openai` | `gpt-4` |
+| `anthropic` | `claude-sonnet-4-20250514` |
+| `vertex-ai` | `gemini-2.5-flash` |
+| `bedrock` | `anthropic.claude-sonnet-4-20250514-v1:0` |
+| `google-ai` | `gemini-2.5-flash` |
+
+## Server
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CORAIL_PORT` | `8000` | HTTP data plane port (chat, conversations, suggestions). |
+| `CORAIL_HOST` | `0.0.0.0` | Host address to bind. |
+| `CORAIL_CONTROL_PORT` | `8001` | HTTP control plane port (evaluate, config reload). |
+| `CORAIL_GRPC_CONTROL_PORT` | `9001` | gRPC ControlService port (`control_port + 1000`). |
+
+## Storage
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CORAIL_STORAGE` | `memory` | Conversation storage backend. Options: `memory`, `postgresql`, `redis`, `s3`. |
+| `CORAIL_DATABASE_URL` | (empty) | PostgreSQL connection string. Required when `CORAIL_STORAGE=postgresql`. Example: `postgres://recif:recif_dev@recif-postgresql:5432/recif`. |
+
+## Memory
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CORAIL_MEMORY_BACKEND` | `in_memory` | Agent working memory backend. Options: `in_memory`, `pgvector`. |
+
+## Web Search
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CORAIL_SEARCH_BACKEND` | `ddgs` | Web search provider. Options: `ddgs` (DuckDuckGo), `searxng`. |
+| `CORAIL_SEARXNG_URL` | `http://localhost:8080` | SearXNG instance URL (when `CORAIL_SEARCH_BACKEND=searxng`). |
+
+## Tools, Skills, and Knowledge Bases
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CORAIL_TOOLS` | (empty) | JSON array of tool definitions. Example: `[{"name":"web-search","type":"http","endpoint":"..."}]` |
+| `CORAIL_SKILLS` | (empty) | JSON array of skill names. Example: `["agui-render","code-review"]` |
+| `CORAIL_KNOWLEDGE_BASES` | (empty) | JSON array of KB configurations. Example: `[{"type":"pgvector","connection_url":"...","kb_id":"..."}]` |
+
+## Suggestions
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CORAIL_SUGGESTIONS` | (empty) | JSON array of static suggestion strings. Example: `["What can you do?","Show me examples"]` |
+| `CORAIL_SUGGESTIONS_PROVIDER` | `llm` | Suggestion generation mode. `static` uses the list above; `llm` generates dynamic follow-ups. |
+
+## Control Plane
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CORAIL_RECIF_GRPC_ADDR` | `localhost:50051` | Recif control plane gRPC address for bidirectional agent-to-platform communication. |
+
+## Auth
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CORAIL_JWT_PUBLIC_KEY` | (empty) | PEM-encoded public key for JWT verification. When set, all requests must include a valid Bearer token. When empty, auth is disabled (trusted headers from Istio). |
+
+## Evaluation
+
+These variables configure the evaluation pipeline. They are not part of the `CORAIL_` prefix convention.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MLFLOW_TRACKING_URI` | (empty) | MLflow server URL for evaluation logging. Example: `http://mlflow.recif-system.svc:5000`. |
+| `RECIF_EVAL_SAMPLE_RATE` | `0` | Percentage of production traces to auto-evaluate (0-100). Set via CRD `evalSampleRate`. |
+| `RECIF_JUDGE_MODEL` | `openai:/gpt-4o-mini` | LLM model used as the evaluation judge. Set via CRD `judgeModel`. |
+
+## LLM Provider API Keys
+
+These are typically injected via the `agent-env` Kubernetes Secret created by the Helm chart.
+
+| Variable | Provider | Description |
+|----------|----------|-------------|
+| `OPENAI_API_KEY` | OpenAI | API key from platform.openai.com |
+| `ANTHROPIC_API_KEY` | Anthropic | API key from console.anthropic.com |
+| `GOOGLE_API_KEY` | Google AI | API key from aistudio.google.com |
+| `GOOGLE_CLOUD_PROJECT` | Vertex AI | GCP project ID |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Vertex AI / GCP | Path to service account JSON file |
+| `AWS_REGION` | Bedrock | AWS region (e.g. `us-east-1`) |
+| `AWS_ACCESS_KEY_ID` | Bedrock | AWS access key |
+| `AWS_SECRET_ACCESS_KEY` | Bedrock | AWS secret key |
+
+## Recif API Server
+
+These variables configure the Recif control plane API (Go server), not the Corail runtime.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AUTH_ENABLED` | `false` | Enable JWT authentication for API requests. |
+| `LOG_LEVEL` | `info` | API server log level. |
+| `LOG_FORMAT` | `json` | API server log format. |
+| `ENV_PROFILE` | `dev` | Environment profile. |
+| `DATABASE_URL` | (set by Helm) | PostgreSQL connection string for the Recif database. |
+| `MLFLOW_TRACKING_URI` | (set by Helm) | MLflow server URL for evaluation and governance. |
+
+> [!TIP]
+> In development, set `CORAIL_MODEL_TYPE=stub` to use the built-in echo model that requires no API keys. Switch to a real provider when you are ready to test with an LLM.
+
+> [!WARNING]
+> Never commit API keys to version control. Use Kubernetes Secrets (configured via the Helm chart `llm` section) to inject credentials at runtime.

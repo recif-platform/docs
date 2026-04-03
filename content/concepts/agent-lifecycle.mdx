@@ -1,18 +1,153 @@
 ---
 title: "Agent Lifecycle"
-description: "Understand the full lifecycle of an agent in Recif: from creation to retirement."
+description: "Understand the full lifecycle of an agent in Recif: from creation through deployment, running, and termination."
 ---
 
 ## Overview
 
-An agent in Recif goes through a well-defined lifecycle: creation, evaluation, deployment, monitoring, and eventual retirement. Each stage has its own governance rules, quality gates, and operational concerns.
+Every agent in Recif progresses through a well-defined lifecycle managed by the Kubernetes operator. The operator continuously reconciles the declared state (Agent CRD) with the actual state (pods, services, configmaps) in the cluster.
 
-> [!NOTE] This page is under active development. Full content coming soon.
+## Four Phases
 
-## What You'll Learn
+The Agent CRD defines four status phases:
 
-- Agent states: draft, pending_eval, active, paused, deprecated, retired
-- How the operator reconciles CRD changes into running pods
-- Version management and release history
-- Health checks and liveness probes
-- Graceful shutdown and conversation draining
+```
+Pending --> Running --> Failed (recoverable)
+                  \
+                   --> Terminated
+```
+
+| Phase | Description | What Triggers It |
+|-------|------------|-----------------|
+| **Pending** | Agent resource created, operator is provisioning | `kubectl apply` or API `POST /agents/{id}/deploy` |
+| **Running** | Deployment is healthy, pods are ready, service is reachable | Operator confirms pod readiness |
+| **Failed** | Deployment has errors (crash loop, image pull failure, etc.) | Pod enters CrashLoopBackOff or similar |
+| **Terminated** | Agent has been stopped or deleted | API `POST /agents/{id}/stop` or `DELETE /agents/{id}` |
+
+## What Happens at Each Transition
+
+### Created (API) --> Pending (K8s)
+
+1. The API creates the agent record in PostgreSQL
+2. `POST /agents/{id}/deploy` triggers the operator
+3. The operator reads the Agent CRD spec and creates:
+   - A **Deployment** with the Corail container image
+   - A **Service** on port 8000 (data plane) and 8001 (control plane)
+   - A **ConfigMap** with agent configuration (model type, strategy, tools, etc.)
+   - Env vars from `envSecrets` (defaults to `agent-env`)
+4. Agent CRD status is set to `Pending`
+
+### Pending --> Running
+
+1. The Kubernetes scheduler places the pod on a node
+2. The Corail container starts and loads the model configuration
+3. The health endpoint (`/healthz`) begins responding
+4. The operator detects pod readiness and updates:
+   - `status.phase` to `Running`
+   - `status.replicas` to the observed count
+   - `status.endpoint` to the in-cluster service URL
+5. A `AgentDeployed` event is emitted on the event bus
+6. The release handler creates a new versioned release in `recif-state`
+
+### Running --> Failed
+
+1. The Corail container crashes (bad config, missing API key, model not found)
+2. Kubernetes restarts the pod (CrashLoopBackOff)
+3. The operator detects the unhealthy state
+4. `status.phase` is updated to `Failed`
+5. Events are logged for debugging via `GET /agents/{id}/events`
+
+> [!NOTE]
+> Failed agents are not automatically deleted. Fix the configuration and the operator will reconcile back to Running.
+
+### Running --> Terminated
+
+Termination can happen via stop or delete:
+
+**Stop** (`POST /agents/{id}/stop`):
+1. The operator scales the Deployment to 0 replicas
+2. `status.phase` is set to `Terminated`
+3. The agent record is preserved -- restart with `POST /agents/{id}/restart`
+
+**Delete** (`DELETE /agents/{id}`):
+1. The API marks the agent as deleted in the database
+2. The operator deletes the Deployment, Service, and ConfigMap
+3. A tombstone is written to `recif-state` (the release history is preserved)
+4. The agent record is soft-deleted with a `deleted_at` timestamp
+
+## Operator Reconciliation Loop
+
+The Recif operator watches for changes to Agent CRDs and reconciles the desired state every 30 seconds.
+
+```
+Watch Agent CRD changes
+    |
+    v
+Compare spec vs actual state
+    |
+    +---> Spec changed? --> Update Deployment/ConfigMap
+    |
+    +---> Replicas mismatch? --> Scale Deployment
+    |
+    +---> Pod unhealthy? --> Update status to Failed
+    |
+    +---> Pod ready? --> Update status to Running
+    |
+    v
+Update AgentStatus (phase, replicas, endpoint, conditions)
+```
+
+The reconciliation handles:
+- **Image updates** -- Rolling update of the Deployment
+- **Config changes** -- Recreate ConfigMap, trigger pod restart
+- **Replica scaling** -- Scale the Deployment up or down (1-10)
+- **Canary management** -- Create/delete canary Deployments and Services
+- **Secret propagation** -- Mount `envSecrets` and `credentialSecret` into pods
+
+## Version Tracking (Releases)
+
+Every meaningful change to an agent creates a new **release** in the `recif-state` Git repository. The release pipeline is event-driven:
+
+| Event | Trigger | Result |
+|-------|---------|--------|
+| `AgentDeployed` | First deploy or restart | Release vN created |
+| `AgentConfigChanged` | Config update via API/dashboard | Release vN+1 created |
+| `AgentCanaryPromoted` | Canary promoted to stable | Release vN+2 created |
+| `AgentDeleted` | Agent deleted | Tombstone written |
+
+Each release is an immutable YAML artifact stored at `agents/{slug}/releases/v{N}.yaml`. The active release is also written to `agents/{slug}/current.yaml`.
+
+## Deletion Flow
+
+When an agent is deleted, the platform ensures a clean teardown while preserving audit history:
+
+1. **Database** -- Agent record receives a `deleted_at` timestamp (soft delete)
+2. **Kubernetes** -- Deployment, Service, and ConfigMap are deleted from the team namespace
+3. **Git state** -- A tombstone is written to `agents/{slug}/current.yaml`:
+
+```yaml
+apiVersion: agents.recif.dev/v1
+kind: AgentRelease
+metadata:
+  name: support-agent
+  status: deleted
+  deleted_at: "2026-04-03T10:00:00Z"
+  changelog: "Agent deleted from platform"
+```
+
+4. **Release history** -- All versioned releases (`v1.yaml`, `v2.yaml`, ...) remain in Git for audit
+
+> [!TIP]
+> The tombstone pattern ensures that even deleted agents have a complete audit trail. You can inspect the full release history of any agent, including deleted ones, by browsing the `recif-state` repository.
+
+## Restart and Recovery
+
+Stopped agents (Terminated phase) can be restarted:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/agents/ag_01J.../restart
+```
+
+This scales the Deployment back to the configured replica count. The operator reconciles and transitions the agent back to Running.
+
+Failed agents automatically recover when the underlying issue is fixed (e.g., a missing Secret is created, a misconfigured model type is corrected). The operator picks up the CRD change on the next reconciliation cycle.

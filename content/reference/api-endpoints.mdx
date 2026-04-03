@@ -1,19 +1,337 @@
 ---
 title: "API Endpoints"
-description: "Complete reference for the Recif REST and gRPC API endpoints."
+description: "Complete reference for all Recif REST API endpoints."
 ---
 
 ## Overview
 
-Recif exposes both REST and gRPC APIs. The REST API is used by the dashboard and CLI, while gRPC handles real-time communication between Recif and Corail agent pods.
+The Recif API is served at `/api/v1` and uses JSON for request/response bodies. All endpoints (except `/healthz`) require authentication when `AUTH_ENABLED=true`.
 
-> [!NOTE] This page is under active development. Full API reference coming soon.
+**Base URL:** `http://localhost:8080/api/v1`
 
-## API Groups
+## Health
 
-- **Agents** — CRUD operations, status, release management
-- **Evaluation** — trigger evals, get results, manage datasets
-- **Governance** — risk profiles, guards, audit logs
-- **Deployments** — canary releases, traffic splitting, rollback
-- **Knowledge Bases** — CRUD, ingestion triggers, evaluation results
-- **gRPC Control Plane** — bidirectional streaming between Recif and Corail pods
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/healthz` | Liveness probe (no auth required) |
+| GET | `/api/v1/health` | Authenticated health check |
+
+## Agents
+
+### CRUD
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/v1/agents` | Create a new agent |
+| GET | `/api/v1/agents` | List all agents for the current team |
+| GET | `/api/v1/agents/{id}` | Get agent details by ID |
+| DELETE | `/api/v1/agents/{id}` | Delete an agent |
+| GET | `/api/v1/agents/{id}/versions` | List agent configuration versions |
+| PATCH | `/api/v1/agents/{id}/status` | Update agent status |
+
+### Example: Create an agent
+
+```bash
+curl -X POST http://localhost:8080/api/v1/agents \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Support Agent",
+    "framework": "adk",
+    "model_type": "openai",
+    "model_id": "gpt-4",
+    "system_prompt": "You are a helpful support agent.",
+    "strategy": "agent-react",
+    "channel": "rest"
+  }'
+```
+
+Response:
+
+```json
+{
+  "data": {
+    "id": "ag_01J...",
+    "name": "Support Agent",
+    "slug": "support-agent",
+    "framework": "adk",
+    "model_type": "openai",
+    "model_id": "gpt-4",
+    "status": "created",
+    "created_at": "2026-04-03T10:00:00Z"
+  }
+}
+```
+
+## Agent Config
+
+| Method | Path | Description |
+|--------|------|-------------|
+| PATCH | `/api/v1/agents/{id}/config` | Update agent configuration (partial) |
+| PUT | `/api/v1/agents/{id}/skills` | Replace agent skills list |
+
+## Agent Deployment
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/v1/agents/{id}/deploy` | Deploy agent to Kubernetes |
+| POST | `/api/v1/agents/{id}/stop` | Stop agent (scale to 0) |
+| POST | `/api/v1/agents/{id}/restart` | Restart agent |
+| GET | `/api/v1/agents/{id}/events` | Get deployment events (SSE stream) |
+
+## Canary Deployments
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/v1/agents/{id}/canary` | Start a canary deployment |
+| GET | `/api/v1/agents/{id}/canary` | Get canary status |
+| POST | `/api/v1/agents/{id}/canary/promote` | Promote canary to stable |
+| POST | `/api/v1/agents/{id}/canary/rollback` | Roll back canary |
+
+## Chat and Conversations
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/v1/agents/{id}/chat` | Send a chat message (sync response) |
+| POST | `/api/v1/agents/{id}/chat/stream` | Send a chat message (SSE streaming) |
+| GET | `/api/v1/agents/{id}/conversations` | List conversations |
+| GET | `/api/v1/agents/{id}/conversations/{cid}` | Get conversation detail |
+| DELETE | `/api/v1/agents/{id}/conversations/{cid}` | Delete a conversation |
+| GET | `/api/v1/agents/{id}/conversations/{cid}/status` | Get generation status |
+
+### Example: Chat with streaming
+
+```bash
+curl -X POST http://localhost:8080/api/v1/agents/ag_01J.../chat/stream \
+  -H "Content-Type: application/json" \
+  -H "Accept: text/event-stream" \
+  -d '{
+    "message": "What is the capital of France?",
+    "conversation_id": "conv_01J..."
+  }'
+```
+
+Response (SSE stream):
+
+```
+data: {"type":"token","content":"The"}
+
+data: {"type":"token","content":" capital"}
+
+data: {"type":"token","content":" of"}
+
+data: {"type":"token","content":" France"}
+
+data: {"type":"token","content":" is"}
+
+data: {"type":"token","content":" Paris"}
+
+data: {"type":"token","content":"."}
+
+data: {"type":"done","content":"The capital of France is Paris."}
+```
+
+## Suggestions
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/agents/{id}/suggestions` | Get follow-up suggestions |
+
+## Agent Memory
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/agents/{id}/memory` | List stored memories |
+| POST | `/api/v1/agents/{id}/memory` | Store a new memory |
+| GET | `/api/v1/agents/{id}/memory/status` | Get memory backend status |
+| POST | `/api/v1/agents/{id}/memory/search` | Search memories by query |
+| DELETE | `/api/v1/agents/{id}/memory/{mid}` | Delete a memory |
+
+## Releases
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/v1/agents/{id}/releases` | Create a new release |
+| GET | `/api/v1/agents/{id}/releases` | List all releases |
+| GET | `/api/v1/agents/{id}/releases/diff` | Diff two releases (`?from=X&to=Y`) |
+| GET | `/api/v1/agents/{id}/releases/{version}` | Get a specific release |
+| POST | `/api/v1/agents/{id}/releases/{version}/deploy` | Deploy (rollback to) a specific version |
+| POST | `/api/v1/agents/{id}/releases/{version}/eval-result` | Receive evaluation callback |
+
+## Evaluations
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/agents/{agent_id}/evaluations/compare` | Compare two eval runs (`?a=X&b=Y`) |
+| GET | `/api/v1/agents/{agent_id}/evaluations` | List evaluation runs |
+| POST | `/api/v1/agents/{agent_id}/evaluations` | Trigger a new evaluation |
+| GET | `/api/v1/agents/{agent_id}/evaluations/{run_id}` | Get evaluation run details |
+| GET | `/api/v1/agents/{agent_id}/datasets` | List golden datasets |
+| POST | `/api/v1/agents/{agent_id}/datasets` | Create a golden dataset |
+
+### Example: Trigger an evaluation
+
+```bash
+curl -X POST http://localhost:8080/api/v1/agents/ag_01J.../evaluations \
+  -H "Content-Type: application/json" \
+  -d '{
+    "dataset_name": "golden-qa",
+    "version": "1"
+  }'
+```
+
+Response:
+
+```json
+{
+  "data": {
+    "id": "ev_01J...",
+    "agent_id": "ag_01J...",
+    "agent_version": "1",
+    "dataset_name": "golden-qa",
+    "status": "completed",
+    "provider": "mlflow",
+    "aggregate_scores": {
+      "safety/mean": 0.95,
+      "relevance_to_query/mean": 0.88,
+      "correctness/mean": 0.82
+    },
+    "total_cases": 5,
+    "passed_cases": 4,
+    "started_at": "2026-04-03T10:00:00Z",
+    "completed_at": "2026-04-03T10:00:45Z"
+  }
+}
+```
+
+## Feedback
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/v1/feedback` | Submit feedback on an agent trace |
+
+## Webhooks
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/v1/webhooks/flagger` | Flagger quality gate webhook |
+
+## Knowledge Bases
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/knowledge-bases` | List all knowledge bases |
+| POST | `/api/v1/knowledge-bases` | Create a knowledge base |
+| GET | `/api/v1/knowledge-bases/{id}` | Get knowledge base details |
+| GET | `/api/v1/knowledge-bases/{id}/documents` | List documents in a KB |
+| POST | `/api/v1/knowledge-bases/{id}/ingest` | Ingest documents into a KB |
+| POST | `/api/v1/knowledge-bases/{id}/search` | Search a knowledge base |
+
+## Integrations
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/integrations/types` | List available integration types |
+| GET | `/api/v1/integrations` | List configured integrations |
+| POST | `/api/v1/integrations` | Create an integration |
+| GET | `/api/v1/integrations/{id}` | Get integration details |
+| DELETE | `/api/v1/integrations/{id}` | Delete an integration |
+| POST | `/api/v1/integrations/{id}/test` | Test integration connection |
+
+## Governance
+
+### Scorecards
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/governance/scorecards` | List scorecards for all agents |
+| GET | `/api/v1/governance/scorecards/{agent_id}` | Get scorecard for a specific agent |
+
+### Policies
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/governance/policies` | List all guardrail policies |
+| POST | `/api/v1/governance/policies` | Create a guardrail policy |
+| PUT | `/api/v1/governance/policies/{id}` | Update a guardrail policy |
+| DELETE | `/api/v1/governance/policies/{id}` | Delete a guardrail policy |
+
+### Risk Profiles
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/risk-profiles` | List available risk profiles |
+
+## AI Radar
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/radar` | Monitoring overview for all agents |
+| GET | `/api/v1/radar/alerts` | List all active alerts |
+| GET | `/api/v1/radar/{agent_id}` | Monitoring detail for a specific agent |
+| GET | `/api/v1/radar/{agent_id}/alerts` | Alerts for a specific agent |
+
+## Skills
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/skills` | List all skills |
+| POST | `/api/v1/skills` | Create a skill |
+| POST | `/api/v1/skills/import` | Import a skill |
+| PUT | `/api/v1/skills/{id}` | Update a skill |
+| DELETE | `/api/v1/skills/{id}` | Delete a skill |
+
+## Scaffold
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/v1/scaffold` | Generate agent project scaffold |
+
+## Teams
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/teams` | List all teams |
+| POST | `/api/v1/teams` | Create a team |
+| GET | `/api/v1/teams/{teamId}` | Get team details |
+| DELETE | `/api/v1/teams/{teamId}` | Delete a team |
+| POST | `/api/v1/teams/{teamId}/members` | Add a member to a team |
+| DELETE | `/api/v1/teams/{teamId}/members/{userId}` | Remove a member |
+| PATCH | `/api/v1/teams/{teamId}/members/{userId}` | Update member role |
+
+## Platform
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/platform/config` | Get platform configuration |
+| PUT | `/api/v1/platform/config` | Update platform configuration |
+| POST | `/api/v1/platform/config/test` | Test platform connection settings |
+| POST | `/api/v1/platform/sync` | Sync platform state (git-state sync) |
+
+## Admin
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/admin/agents` | List all agents (cross-team, admin only) |
+
+## Error Format
+
+All errors follow a consistent format:
+
+```json
+{
+  "error": "Not Found",
+  "message": "Agent not found",
+  "path": "/api/v1/agents/ag_invalid"
+}
+```
+
+| HTTP Status | Meaning |
+|-------------|---------|
+| 200 | Success |
+| 201 | Created |
+| 400 | Bad request (invalid JSON, missing fields) |
+| 401 | Unauthorized (missing or invalid token) |
+| 404 | Resource not found |
+| 412 | Precondition failed (Flagger quality gate) |
+| 500 | Internal server error |
+| 503 | Service unavailable (K8s not connected) |

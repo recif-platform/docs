@@ -1,19 +1,310 @@
 ---
 title: "Evaluation"
-description: "Set up eval-driven releases with MLflow, quality gates, and 14+ automated scorers."
+description: "Set up eval-driven releases with MLflow, quality gates, and 14 automated scorers."
 ---
 
 ## Overview
 
-Recif integrates with MLflow GenAI to provide a comprehensive evaluation pipeline for your agents. Every release can be gated by quality scores, ensuring that only agents that meet your standards reach production.
+Recif integrates with MLflow GenAI to provide a comprehensive evaluation pipeline for your agents. Every release can be gated by quality scores, and the platform ships with 14 built-in scorers covering response quality, RAG accuracy, and tool-call correctness.
 
-> [!NOTE] This page is under active development. Full content coming soon. See [Eval-Driven Releases](/docs/concepts/eval-driven-releases) for the conceptual overview.
+## The 14 MLflow Scorers
 
-## What You'll Learn
+Recif uses a registry-based scorer resolution pattern. Each scorer is an MLflow GenAI scorer instantiated at evaluation time.
 
-- Setting up MLflow for agent evaluation
-- Available scorers (correctness, relevance, faithfulness, and 11 more)
-- Creating golden datasets for consistent testing
-- Configuring quality gates and minimum scores
-- Feedback-to-dataset loops for continuous improvement
-- Viewing evaluation results in the dashboard
+### Response Quality Scorers
+
+| Scorer | Category | What It Measures |
+|--------|----------|-----------------|
+| `safety` | Safety | Detects harmful, toxic, or unsafe content in responses |
+| `relevance_to_query` | Quality | How well the response addresses the user's question |
+| `correctness` | Quality | Factual accuracy of the response against expected output |
+| `completeness` | Quality | Whether the response fully answers all parts of the query |
+| `fluency` | Quality | Grammar, readability, and natural language quality |
+| `equivalence` | Quality | Semantic similarity between response and reference answer |
+| `summarization` | Quality | Quality of summarization when the task is to summarize |
+| `guidelines` | Compliance | Adherence to custom guidelines provided in the scorer config |
+| `expectations_guidelines` | Compliance | Whether response meets specific expected behaviors |
+
+### RAG Scorers
+
+| Scorer | Category | What It Measures |
+|--------|----------|-----------------|
+| `retrieval_relevance` | RAG | Whether retrieved documents are relevant to the query |
+| `retrieval_groundedness` | RAG | Whether the response is grounded in the retrieved context |
+| `retrieval_sufficiency` | RAG | Whether retrieved context is sufficient to answer the query |
+
+### Tool Call Scorers
+
+| Scorer | Category | What It Measures |
+|--------|----------|-----------------|
+| `tool_call_correctness` | Tools | Whether the agent called the right tools with correct parameters |
+| `tool_call_efficiency` | Tools | Whether the agent used the minimum necessary tool calls |
+
+## Risk Profiles
+
+Risk profiles determine which scorers run automatically during eval-gated releases. Each profile maps to a preset list of scorers.
+
+### LOW -- 2 scorers
+
+Minimum quality bar. Use for internal tools and low-stakes agents.
+
+| Scorer | Purpose |
+|--------|---------|
+| `safety` | Ensure no harmful content |
+| `relevance_to_query` | Basic relevance check |
+
+**Minimum score threshold:** 60%
+
+### STANDARD -- 3 scorers
+
+Default for most agents. Adds factual correctness.
+
+| Scorer | Purpose |
+|--------|---------|
+| `safety` | Ensure no harmful content |
+| `relevance_to_query` | Relevance check |
+| `correctness` | Factual accuracy |
+
+**Minimum score threshold:** 75%
+
+### HIGH -- 6 scorers
+
+Strict quality bar for customer-facing and regulated agents.
+
+| Scorer | Purpose |
+|--------|---------|
+| `safety` | Ensure no harmful content |
+| `relevance_to_query` | Relevance check |
+| `correctness` | Factual accuracy |
+| `guidelines` | Custom guideline adherence |
+| `retrieval_groundedness` | RAG grounding (if KB attached) |
+| `tool_call_correctness` | Tool use accuracy (if tools attached) |
+
+**Minimum score threshold:** 90%
+
+## Golden Datasets
+
+Golden datasets are curated sets of test cases used for consistent evaluation. Each case has an input and an optional expected output.
+
+### Create a dataset via API
+
+```bash
+curl -X POST http://localhost:8080/api/v1/agents/ag_01J.../datasets \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "golden-qa",
+    "cases": [
+      {
+        "input": "What is the capital of France?",
+        "expected_output": "Paris"
+      },
+      {
+        "input": "Summarize the theory of relativity in one sentence.",
+        "expected_output": "Space and time are interwoven and warped by mass and energy."
+      },
+      {
+        "input": "Translate hello to Spanish.",
+        "expected_output": "hola"
+      }
+    ]
+  }'
+```
+
+### Dataset structure
+
+Each case supports the following fields:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `input` | string | Yes | The user query to send to the agent |
+| `expected_output` | string | No | The reference answer for correctness scoring |
+| `context` | string | No | Additional context for RAG evaluations |
+| `metadata` | object | No | Key-value pairs for filtering and tagging |
+
+### Seed datasets
+
+When you first trigger an evaluation, Recif creates a seed dataset with 5 basic test cases if none exist. Replace these with domain-specific cases for meaningful results.
+
+## Triggering Evaluations
+
+### Manual trigger via API
+
+```bash
+curl -X POST http://localhost:8080/api/v1/agents/ag_01J.../evaluations \
+  -H "Content-Type: application/json" \
+  -d '{
+    "dataset_name": "golden-qa",
+    "version": "1"
+  }'
+```
+
+Response:
+
+```json
+{
+  "data": {
+    "id": "ev_01J...",
+    "agent_id": "ag_01J...",
+    "agent_version": "1",
+    "dataset_name": "golden-qa",
+    "status": "completed",
+    "provider": "mlflow",
+    "aggregate_scores": {
+      "safety/mean": 0.95,
+      "relevance_to_query/mean": 0.88,
+      "correctness/mean": 0.82
+    },
+    "total_cases": 3,
+    "passed_cases": 3,
+    "started_at": "2026-04-03T10:00:00Z",
+    "completed_at": "2026-04-03T10:00:45Z"
+  }
+}
+```
+
+### On release (eval-gated)
+
+When an agent has `governance.min_quality_score > 0` in its configuration, every new release is created with status `pending_eval`. Recif automatically:
+
+1. Creates the release in `recif-state` with status `pending_eval`
+2. Sends the evaluation request to the Corail agent's `/control/evaluate` endpoint
+3. Corail runs `mlflow.genai.evaluate()` with the configured risk profile scorers
+4. Corail POSTs results back to `POST /api/v1/agents/{id}/releases/{version}/eval-result`
+5. Recif approves or rejects the release based on scores
+
+### Production sampling
+
+Set `evalSampleRate` on the Agent CRD (0--100) to automatically evaluate a percentage of production traces:
+
+```yaml
+spec:
+  evalSampleRate: 10          # Evaluate 10% of production traffic
+  judgeModel: "openai:/gpt-4o-mini"
+```
+
+## Eval-Gated Releases
+
+The release lifecycle with evaluation gates:
+
+```
+Config Change
+    |
+    v
+Release Created (status: pending_eval)
+    |
+    v
+Evaluation Triggered --> Corail /control/evaluate
+    |
+    v
+Scores Computed (MLflow GenAI)
+    |
+    v
+Callback to Recif /eval-result
+    |
+    +---> avg >= min_quality_score --> APPROVED (status: active)
+    |                                   |
+    |                                   v
+    |                              current.yaml updated
+    |                              CRD patched in K8s
+    |
+    +---> avg < min_quality_score --> REJECTED (status: rejected)
+                                       |
+                                       v
+                                  Previous version stays active
+                                  Release marked with rejection reason
+```
+
+## LLM-as-Judge Configuration
+
+The evaluation engine uses an LLM judge to score responses. Configure the judge model per agent:
+
+```yaml
+spec:
+  judgeModel: "openai:/gpt-4o-mini"
+```
+
+The judge model is passed to every MLflow scorer as the `model` parameter. You can use any supported provider:
+
+| Judge Model | Example Value |
+|-------------|--------------|
+| OpenAI | `openai:/gpt-4o-mini` |
+| Anthropic | `anthropic:/claude-sonnet-4-20250514` |
+| Google AI | `google-ai:/gemini-2.5-flash` |
+
+> [!TIP]
+> Use a fast, cost-effective model as the judge (like `gpt-4o-mini`) since it evaluates every test case in the dataset. The agent being evaluated uses its own configured model.
+
+## Feedback Loop
+
+Recif implements a continuous improvement loop where negative user feedback flows back into evaluation datasets.
+
+### How it works
+
+1. User gives a thumbs-down (value < 3 on 1-5 scale, or < 0.6 on 0-1 scale)
+2. Recif extracts the original input from the MLflow trace
+3. The input is appended as a new test case in the agent's golden dataset (with `metadata.source: "negative_feedback"`)
+4. Next evaluation run includes the new case
+
+### Submit feedback via API
+
+```bash
+curl -X POST http://localhost:8080/api/v1/feedback \
+  -H "Content-Type: application/json" \
+  -d '{
+    "trace_id": "tr_abc123",
+    "name": "user_rating",
+    "value": 1,
+    "source": "user",
+    "comment": "The answer was completely wrong",
+    "agent_id": "ag_01J..."
+  }'
+```
+
+Response:
+
+```json
+{
+  "status": "recorded",
+  "trace_id": "tr_abc123",
+  "name": "user_rating",
+  "value": 1,
+  "proxied": true,
+  "dataset_appended": true
+}
+```
+
+## Comparing Evaluation Runs
+
+Compare two evaluation runs side by side to detect regressions:
+
+```bash
+curl "http://localhost:8080/api/v1/agents/ag_01J.../evaluations/compare?a=ev_run1&b=ev_run2"
+```
+
+Response:
+
+```json
+{
+  "data": {
+    "run_a": "ev_run1",
+    "run_b": "ev_run2",
+    "metrics": {
+      "correctness/mean": { "a": 0.82, "b": 0.91, "diff": 0.09, "winner": "b" },
+      "safety/mean": { "a": 0.95, "b": 0.93, "diff": -0.02, "winner": "a" }
+    },
+    "winner": "b"
+  }
+}
+```
+
+## Listing Evaluation Runs
+
+```bash
+curl http://localhost:8080/api/v1/agents/ag_01J.../evaluations
+```
+
+> [!NOTE]
+> Evaluation results are stored in MLflow when available. If MLflow is unreachable, Recif falls back to in-memory storage for dashboard preview. The `provider` field indicates the data source: `mlflow`, `corail`, or `mock`.
+
+> [!WARNING]
+> Mock scores (provider: `mock`) are generated when the agent pod is unreachable. They provide a dashboard preview but do not reflect real agent quality. Always verify with real evaluations before promoting to production.

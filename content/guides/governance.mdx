@@ -1,19 +1,295 @@
 ---
 title: "Governance"
-description: "Configure risk profiles, guards, budget limits, and deny-by-default policies for your agents."
+description: "Configure scorecards, guardrail policies, risk profiles, and compliance monitoring for your agents."
 ---
 
 ## Overview
 
-Governance in Recif is not about rigid tiers — it is about risk profiles and quality gates that adapt to your organization's needs. Every agent gets a governance configuration that determines what it can access, how much it can spend, and what safety guards are active.
+Governance in Recif provides a structured framework to monitor and control agent quality, safety, cost, and compliance. Every agent gets a **scorecard** with four weighted dimensions, and platform administrators can enforce **guardrail policies** that restrict agent behavior.
 
-> [!NOTE] This page is under active development. Full content coming soon.
+## Scorecards
 
-## What You'll Learn
+A scorecard is a multi-dimensional quality assessment for an agent. Recif computes scorecards from MLflow evaluation metrics (or deterministic mock data when MLflow is unavailable).
 
-- Risk profiles (low, medium, high, critical)
-- Guard pipeline (PII detection, secrets detection, budget limits)
-- Deny-by-default policies for tools and external access
-- Platform-level vs team-level vs agent-level governance
-- Audit trail and compliance reporting
-- Custom guard development
+### Four Dimensions
+
+| Dimension | Weight | What It Measures |
+|-----------|--------|-----------------|
+| **Quality** | 35% | Response correctness, relevance, and factual accuracy |
+| **Safety** | 30% | Harmful content detection, PII exposure, injection attempts |
+| **Cost** | 20% | Token usage, latency, estimated daily cost |
+| **Compliance** | 15% | Policy violations, audit coverage |
+
+The overall score is a weighted average:
+
+```
+overall = quality * 0.35 + safety * 0.30 + cost * 0.20 + compliance * 0.15
+```
+
+### How Each Dimension Is Calculated
+
+**Quality** (from MLflow metrics):
+
+| Metric | Source | How It Maps |
+|--------|--------|-------------|
+| `correctness/mean` | MLflow scorer | Averaged with relevance, scaled to 0-100 |
+| `relevance_to_query/mean` | MLflow scorer | Averaged with correctness, scaled to 0-100 |
+| `source_citation_rate` | Computed | Percentage of responses with source citations |
+| `factual_accuracy` | Computed | Percentage of factually correct responses |
+
+**Safety**:
+
+| Metric | Source | How It Maps |
+|--------|--------|-------------|
+| `safety/mean` | MLflow scorer | Scaled to 0-100 |
+| `guard_block_rate` | Runtime monitoring | Percentage of blocked requests (lower is better) |
+| `pii_detection_count` | Runtime monitoring | Count of PII leaks (threshold: 5) |
+| `injection_attempt_count` | Runtime monitoring | Count of injection attempts (threshold: 2) |
+
+**Cost**:
+
+| Metric | Source | How It Maps |
+|--------|--------|-------------|
+| `avg_tokens_per_request` | Runtime monitoring | Lower is better (threshold: 1500) |
+| `avg_latency_ms` | Runtime monitoring | Lower is better (threshold: 1000ms) |
+| `estimated_daily_cost_usd` | Computed | Lower is better (threshold: $5) |
+
+**Compliance**:
+
+| Metric | Source | How It Maps |
+|--------|--------|-------------|
+| `policy_violation_count` | Policy engine | Lower is better (threshold: 2) |
+| `audit_coverage_pct` | Audit system | Higher is better (threshold: 85%) |
+
+### Letter Grades
+
+Each dimension and the overall score receive a letter grade:
+
+| Grade | Score Range |
+|-------|------------|
+| **A** | >= 90 |
+| **B** | >= 80 |
+| **C** | >= 70 |
+| **D** | >= 60 |
+| **F** | < 60 |
+
+### Metric Status
+
+Each individual metric has a status based on its threshold:
+
+| Status | Meaning |
+|--------|---------|
+| `ok` | Value meets or exceeds threshold |
+| `warning` | Value is below threshold but above critical |
+| `critical` | Value is far below threshold |
+
+### Retrieve a scorecard
+
+```bash
+# All agents
+curl http://localhost:8080/api/v1/governance/scorecards
+
+# Single agent
+curl http://localhost:8080/api/v1/governance/scorecards/ag_01J...
+```
+
+Response:
+
+```json
+{
+  "data": {
+    "agent_id": "ag_01J...",
+    "agent_name": "Support Agent",
+    "overall": 82.5,
+    "quality": {
+      "score": 87.3,
+      "grade": "B",
+      "metrics": [
+        { "name": "source_citation_rate", "value": 85.2, "unit": "percent", "threshold": 80, "status": "ok" },
+        { "name": "factual_accuracy", "value": 91.0, "unit": "percent", "threshold": 85, "status": "ok" },
+        { "name": "response_relevance", "value": 85.7, "unit": "percent", "threshold": 80, "status": "ok" }
+      ]
+    },
+    "safety": { "score": 90.1, "grade": "A", "metrics": [...] },
+    "cost": { "score": 72.4, "grade": "C", "metrics": [...] },
+    "compliance": { "score": 78.0, "grade": "C", "metrics": [...] },
+    "data_source": "mlflow",
+    "updated_at": "2026-04-03T10:00:00Z"
+  }
+}
+```
+
+> [!NOTE]
+> When MLflow is connected, scorecards use real evaluation data (`data_source: "mlflow"`). Without MLflow, deterministic mock data is generated for dashboard preview.
+
+## Guardrail Policies
+
+Guardrail policies are rules enforced on agent behavior. Recif ships with 4 default policies.
+
+### Default Policies
+
+| Policy | ID | Severity | Rule | Description |
+|--------|-----|----------|------|-------------|
+| **Token Limit** | `gp_default_tokens` | `warning` | `max_tokens < 4096` | Restrict max tokens per request to control cost |
+| **Latency SLA** | `gp_default_latency` | `critical` | `max_latency < 2000` | Ensure response latency stays under 2 seconds |
+| **Blocked Topics** | `gp_default_topics` | `critical` | `blocked_topics contains violence,illegal_activity,self_harm` | Prevent agents from discussing forbidden topics |
+| **Daily Cost Cap** | `gp_default_cost` | `warning` | `max_cost_per_day < 10.00` | Alert when daily cost exceeds budget |
+
+### Policy Structure
+
+Each policy has the following shape:
+
+```json
+{
+  "id": "gp_default_tokens",
+  "name": "Token Limit",
+  "description": "Restrict maximum tokens per request to control cost",
+  "severity": "warning",
+  "enabled": true,
+  "rules": [
+    {
+      "type": "max_tokens",
+      "operator": "lt",
+      "value": "4096"
+    }
+  ]
+}
+```
+
+**Severity levels:**
+
+| Severity | Behavior |
+|----------|----------|
+| `warning` | Logs a warning alert, does not block |
+| `critical` | Blocks the action, may trigger rollback |
+
+### Create a custom policy
+
+```bash
+curl -X POST http://localhost:8080/api/v1/governance/policies \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Max Response Length",
+    "description": "Limit response length to 2000 tokens for chat agents",
+    "severity": "warning",
+    "enabled": true,
+    "rules": [
+      {
+        "type": "max_tokens",
+        "operator": "lt",
+        "value": "2000"
+      }
+    ]
+  }'
+```
+
+### Update an existing policy
+
+```bash
+curl -X PUT http://localhost:8080/api/v1/governance/policies/gp_01J... \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Token Limit (Updated)",
+    "description": "Increased limit for summarization agents",
+    "severity": "warning",
+    "enabled": true,
+    "rules": [
+      {
+        "type": "max_tokens",
+        "operator": "lt",
+        "value": "8192"
+      }
+    ]
+  }'
+```
+
+### Delete a policy
+
+```bash
+curl -X DELETE http://localhost:8080/api/v1/governance/policies/gp_01J...
+```
+
+### List all policies
+
+```bash
+curl http://localhost:8080/api/v1/governance/policies
+```
+
+## Risk Profiles
+
+Risk profiles control the evaluation rigor applied to agent releases. They determine which scorers run and the minimum score threshold.
+
+| Profile | Min Score | Scorers | Use Case |
+|---------|-----------|---------|----------|
+| **LOW** | 60% | `safety`, `relevance_to_query` | Internal tools, prototypes |
+| **MEDIUM** | 75% | `safety`, `relevance_to_query`, `correctness` | Standard agents |
+| **HIGH** | 90% | `safety`, `relevance_to_query`, `correctness`, `guidelines`, `retrieval_groundedness`, `tool_call_correctness` | Customer-facing, regulated |
+
+### List risk profiles
+
+```bash
+curl http://localhost:8080/api/v1/risk-profiles
+```
+
+Response:
+
+```json
+{
+  "data": [
+    { "id": "rp_LOW...", "name": "LOW", "min_score": 60, "description": "Minimum quality bar" },
+    { "id": "rp_MED...", "name": "MEDIUM", "min_score": 75, "description": "Standard quality bar" },
+    { "id": "rp_HIG...", "name": "HIGH", "min_score": 90, "description": "Strict quality bar" }
+  ]
+}
+```
+
+### Configure risk profile per agent
+
+Set the risk profile in the agent's governance configuration. This is stored in the agent's config JSONB and propagated to the release artifact:
+
+```json
+{
+  "governance": {
+    "risk_profile": "high",
+    "min_quality_score": 90,
+    "eval_dataset": "golden-qa",
+    "guards": ["pii-detection", "secrets-scanner"],
+    "policies": ["default", "custom-compliance"]
+  }
+}
+```
+
+## Policy Enforcement Flow
+
+```
+User Request
+    |
+    v
+Guardrail Check (pre-processing)
+    |
+    +---> Blocked topics? --> REJECT (critical)
+    |
+    +---> Token limit? --> WARN or REJECT
+    |
+    v
+Agent Processes Request
+    |
+    v
+Guardrail Check (post-processing)
+    |
+    +---> Latency SLA exceeded? --> Log WARNING
+    |
+    +---> Cost cap exceeded? --> Log WARNING, alert
+    |
+    v
+Response Returned
+    |
+    v
+Metrics Updated --> Scorecard Recalculated
+```
+
+> [!WARNING]
+> Policies with `critical` severity will block requests in real-time. Test policies thoroughly in a staging environment before enabling them on production agents.
+
+> [!TIP]
+> Start with the `LOW` risk profile and the default policies. Increase rigor as you build confidence in your agent's quality through evaluation data.

@@ -5,15 +5,168 @@ description: "How Recif uses evaluation quality gates to prevent bad agent versi
 
 ## Overview
 
-Eval-driven releases are a core Recif concept: no agent version reaches production without passing automated quality gates. This is powered by MLflow GenAI integration with 14+ scorers, golden datasets, and configurable thresholds.
+Eval-driven releases are a core Recif concept: no agent version reaches production without passing automated quality gates. This is fundamentally different from traditional CI/CD -- you cannot unit-test an LLM's output the same way you test deterministic code.
 
-> [!NOTE] This page is under active development. Full content coming soon.
+## The Problem
 
-## What You'll Learn
+Traditional software deployment relies on code tests: if all tests pass, the build is green, and you deploy. But LLM-powered agents have non-deterministic outputs. The same input can produce different (and differently good) responses depending on the model, prompt, temperature, and context.
 
-- The eval-gated release pipeline: pending_eval, active, rejected
-- MLflow GenAI scorers: correctness, relevance, faithfulness, and more
-- Golden datasets: curated Q/A pairs for consistent testing
-- Quality gate thresholds and how to configure them
-- Continuous scoring in production via feedback loops
-- Regression detection: comparing new versions against previous ones
+How do you know if a prompt change made your agent better or worse? How do you catch quality regressions before users do? How do you enforce a minimum quality bar across your organization?
+
+## The Solution: Eval-Gated Releases
+
+Every release in Recif starts with status `pending_eval`. The release is not applied to production until an evaluation confirms it meets the quality threshold.
+
+```
+Config Change (prompt, model, tools, skills)
+    |
+    v
+Release Created (status: pending_eval)
+    |
+    v
+Evaluation Triggered
+    |
+    v
+MLflow GenAI runs scorers against golden dataset
+    |
+    v
+Scores computed (safety, relevance, correctness, ...)
+    |
+    v
+Average score compared to min_quality_score
+    |
+    +---> PASSED --> Release APPROVED (status: active)
+    |                  |
+    |                  v
+    |             current.yaml updated in recif-state
+    |             CRD patched in Kubernetes
+    |             Agent pod gets new config
+    |
+    +---> FAILED --> Release REJECTED (status: rejected)
+                       |
+                       v
+                  Previous version stays active
+                  Rejection reason logged
+                  Release archived with [REJECTED] tag
+```
+
+## Detailed Flow
+
+### 1. Configuration Change
+
+A developer changes the agent's system prompt, model, tools, or skills -- via the dashboard, API, or kubectl.
+
+### 2. Release Created
+
+The release handler creates an immutable release artifact:
+
+```yaml
+apiVersion: agents.recif.dev/v1
+kind: AgentRelease
+metadata:
+  name: support-agent
+  version: 5
+  previous: 4
+  status: pending_eval
+  timestamp: "2026-04-03T10:00:00Z"
+  changelog: "Updated system prompt for better greeting"
+  checksum: "a1b2c3..."
+```
+
+This artifact is committed to `agents/support-agent/releases/v5.yaml` in the `recif-state` repository.
+
+### 3. Evaluation Triggered
+
+If `governance.min_quality_score > 0`, Recif sends an async evaluation request to the Corail agent's control plane:
+
+```
+POST http://{agent-slug}.team-default.svc.cluster.local:8001/control/evaluate
+```
+
+The request includes:
+- The golden dataset (test cases with inputs and expected outputs)
+- The risk profile (determines which scorers to use)
+- The minimum quality score threshold
+- A callback URL for results
+
+### 4. Scoring
+
+The Corail evaluator runs `mlflow.genai.evaluate()` with the risk-profile scorers. Each test case is sent through the agent pipeline, and the LLM judge scores the response.
+
+### 5. Callback
+
+Corail POSTs results back to Recif:
+
+```
+POST /api/v1/agents/{id}/releases/{version}/eval-result
+```
+
+```json
+{
+  "run_id": "ev_01J...",
+  "status": "completed",
+  "scores": {
+    "safety/mean": 0.95,
+    "relevance_to_query/mean": 0.88,
+    "correctness/mean": 0.82
+  },
+  "passed": true,
+  "verdict": "PASSED (avg=0.883 >= 0.750)"
+}
+```
+
+### 6. Approve or Reject
+
+**Approved:** The release status changes to `active`. The artifact is written to `current.yaml` and the K8s CRD is patched with the new configuration.
+
+**Rejected:** The release status changes to `rejected`. The previous active version remains in `current.yaml`. The CRD is rolled back to the previous configuration. The rejection reason is appended to the changelog.
+
+## Comparison with Traditional CI/CD
+
+| Aspect | Traditional CI/CD | Recif Eval-Driven |
+|--------|------------------|------------------|
+| **What is tested** | Code logic, unit tests, integration tests | LLM output quality via scorer judges |
+| **Test type** | Deterministic (pass/fail) | Probabilistic (score threshold) |
+| **When** | Before merge (PR checks) | Before deploy (release gate) |
+| **Feedback** | Build logs | MLflow metrics, scorer breakdowns |
+| **Regression detection** | Test failures | Score comparison between versions |
+| **Continuous monitoring** | Uptime/error rate | Production sampling with eval scorers |
+
+## Why This Is Unique to Recif
+
+Most LLM platforms treat deployment as a binary: the agent is deployed or it is not. Recif introduces a quality gate between "configured" and "live" that is specifically designed for non-deterministic AI outputs.
+
+Key differentiators:
+
+- **14 purpose-built scorers** covering safety, quality, RAG, and tool use
+- **Risk profiles** that automatically select the right scorers for your use case
+- **Golden datasets** that grow from negative user feedback
+- **Continuous production scoring** via trace sampling
+- **Version-level comparisons** to detect regressions
+- **Git-native audit trail** where every release (approved or rejected) is an immutable commit
+
+## Auto-Promote (No Eval Gate)
+
+If `governance.min_quality_score` is 0 (the default), releases are auto-promoted immediately without waiting for evaluation. This is useful during development:
+
+```
+Config Change --> Release Created --> Auto-Approved --> current.yaml updated
+```
+
+To enable eval-gated releases, set a minimum quality score in the agent's governance configuration:
+
+```json
+{
+  "governance": {
+    "risk_profile": "standard",
+    "min_quality_score": 75,
+    "eval_dataset": "golden-qa"
+  }
+}
+```
+
+> [!WARNING]
+> With `min_quality_score: 0`, any configuration change is immediately applied to production. Set a non-zero threshold for customer-facing agents.
+
+> [!TIP]
+> Start with `min_quality_score: 60` (LOW risk profile) and increase as you build a comprehensive golden dataset. The quality of your evaluations depends directly on the quality of your test cases.

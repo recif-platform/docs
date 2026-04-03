@@ -1,19 +1,242 @@
 ---
 title: "GitOps Artifacts"
-description: "How Recif uses Git as the source of truth for agent configuration, enabling full audit trail and ArgoCD integration."
+description: "How Recif uses Git as the source of truth for agent configuration, with immutable versioned artifacts and full audit trail."
 ---
 
 ## Overview
 
-Agent configuration in Recif is stored as immutable versioned artifacts in a dedicated Git repository (recif-state). Every change is a commit, every version is diffable, and the entire deployment history is auditable. This prepares for full ArgoCD integration in v0.2.
+Agent configuration in Recif is stored as immutable versioned artifacts in a dedicated Git repository called `recif-state`. Every configuration change is a Git commit, every version is diffable, and the entire deployment history is auditable. This design prepares for full ArgoCD integration.
 
-> [!NOTE] This page is under active development. Full content coming soon.
+## recif-state Repository Structure
 
-## What You'll Learn
+```
+recif-state/
+  agents/
+    support-agent/
+      current.yaml              # Active release (symlink-like)
+      releases/
+        v1.yaml                 # Initial deployment
+        v2.yaml                 # Prompt update
+        v3.yaml                 # Model change
+        v4.yaml                 # Rejected (failed eval)
+        v5.yaml                 # Current active release
+    code-reviewer/
+      current.yaml
+      releases/
+        v1.yaml
+        v2.yaml
+    deleted-agent/
+      current.yaml              # Tombstone (status: deleted)
+      releases/
+        v1.yaml
+        v2.yaml
+```
 
-- The recif-state repository structure
-- Immutable release artifacts (agents/slug/releases/vN.yaml)
-- How the API server commits config changes via GitHub API
-- Dual-track: ready-to-use agents vs custom dev agents
-- Evolution path: direct commits (v0.1), ArgoCD (v0.2), OCI registry (v0.3)
-- Rollback to any previous version
+Each agent has a directory named after its slug, containing:
+- `current.yaml` -- The currently active release artifact
+- `releases/` -- Immutable versioned release artifacts (never modified after commit)
+
+## Artifact YAML Format
+
+Every release artifact follows the `AgentRelease` schema:
+
+```yaml
+apiVersion: agents.recif.dev/v1
+kind: AgentRelease
+metadata:
+  name: support-agent
+  version: 5
+  previous: 4
+  author: recif-api
+  timestamp: "2026-04-03T10:00:00Z"
+  changelog: "Updated system prompt for better greeting"
+  checksum: "a1b2c3d4e5f6..."
+  status: active
+runtime:
+  image: "corail:latest"
+  channel: rest
+  strategy: agent-react
+  replicas: 2
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+agent:
+  model:
+    provider: openai
+    id: gpt-4
+  system_prompt: |
+    You are a helpful customer support agent.
+    Always greet the user warmly.
+  skills:
+    - agui-render
+  tools:
+    - web-search
+  knowledge_bases:
+    - kb_products
+  memory:
+    backend: postgresql
+governance:
+  guards:
+    - pii-detection
+  risk_profile: standard
+  policies:
+    - default
+  eval_dataset: golden-qa
+  min_quality_score: 75
+deployment:
+  namespace: team-default
+  environment: development
+```
+
+### Field Reference
+
+**metadata:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Agent slug (matches directory name) |
+| `version` | int | Monotonically increasing version number |
+| `previous` | int | Previous version number (0 for first release) |
+| `author` | string | Who created the release (usually `recif-api`) |
+| `timestamp` | string | ISO 8601 timestamp of release creation |
+| `changelog` | string | Human-readable description of what changed |
+| `checksum` | string | SHA-256 hash of the artifact (excluding checksum field) |
+| `status` | string | Release status: `pending_eval`, `active`, `rejected`, `archived`, `deleted` |
+
+**runtime:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `image` | string | Container image for the agent |
+| `channel` | string | Communication channel (default: `rest`) |
+| `strategy` | string | Agent strategy (default: `agent-react`) |
+| `replicas` | int | Number of pod replicas |
+| `resources` | object | Kubernetes resource requests/limits |
+
+**agent:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `model.provider` | string | LLM provider key |
+| `model.id` | string | Model identifier |
+| `system_prompt` | string | The agent's instruction set |
+| `skills` | []string | Assigned skill IDs |
+| `tools` | []string | Assigned tool names |
+| `knowledge_bases` | []string | Attached knowledge base IDs |
+| `memory.backend` | string | Memory storage backend |
+
+**governance:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `guards` | []string | Active guard names |
+| `risk_profile` | string | `low`, `standard`, or `high` |
+| `policies` | []string | Applied policy names |
+| `eval_dataset` | string | Golden dataset name for evaluations |
+| `min_quality_score` | int | Minimum score (0-100) for eval gate |
+
+**deployment:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `namespace` | string | Target Kubernetes namespace |
+| `environment` | string | Environment label |
+
+## Status Transitions
+
+```
+pending_eval --> active      (evaluation passed)
+pending_eval --> rejected    (evaluation failed)
+active       --> archived    (newer version activated)
+any          --> deleted     (agent deleted from platform)
+```
+
+| Status | Meaning |
+|--------|---------|
+| `pending_eval` | Release created, waiting for evaluation results |
+| `active` | Currently deployed to production (written to `current.yaml`) |
+| `rejected` | Failed evaluation, not deployed. Changelog appended with `[REJECTED: reason]` |
+| `archived` | Previously active, superseded by a newer version |
+| `deleted` | Agent was deleted. Tombstone preserves metadata for audit |
+
+## Tombstones
+
+When an agent is deleted, its `current.yaml` is overwritten with a tombstone:
+
+```yaml
+apiVersion: agents.recif.dev/v1
+kind: AgentRelease
+metadata:
+  name: support-agent
+  status: deleted
+  deleted_at: "2026-04-03T10:00:00Z"
+  changelog: "[DELETED] Updated system prompt for better greeting"
+```
+
+The release history files (`v1.yaml`, `v2.yaml`, ...) are preserved. This ensures a complete audit trail even for deleted agents.
+
+## How to Diff Versions
+
+Compare any two releases via the API:
+
+```bash
+curl "http://localhost:8080/api/v1/agents/ag_01J.../releases/diff?from=3&to=5"
+```
+
+Response:
+
+```json
+{
+  "data": [
+    { "path": "agent.model.provider", "from": "ollama", "to": "openai" },
+    { "path": "agent.model.id", "from": "qwen3.5:35b", "to": "gpt-4" },
+    { "path": "agent.system_prompt", "from": "You are helpful.", "to": "You are a helpful support agent." },
+    { "path": "runtime.replicas", "from": 1, "to": 2 }
+  ]
+}
+```
+
+The diff excludes metadata fields that always change between versions (`version`, `previous`, `timestamp`, `checksum`, `changelog`).
+
+## Rollback to Any Version
+
+Deploy any previous release to restore an older configuration:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/agents/ag_01J.../releases/3/deploy
+```
+
+This:
+1. Reads the target release artifact (`v3.yaml`)
+2. Overwrites `current.yaml` with the target artifact
+3. Patches the Kubernetes CRD with the restored configuration
+4. Emits a `ReleaseDeployed` event
+
+## Checksum Verification
+
+Every artifact includes a SHA-256 checksum computed from the YAML serialization (with the checksum field zeroed). This enables:
+
+- **Integrity verification** -- detect tampering or corruption
+- **Duplicate detection** -- skip creating a release if nothing changed
+- **Audit compliance** -- prove that the deployed config matches the committed artifact
+
+## ArgoCD Integration (Planned)
+
+The `recif-state` repository is designed to work as an ArgoCD Application source:
+
+1. ArgoCD watches `recif-state` for changes to `current.yaml` files
+2. When a new release is approved, ArgoCD detects the commit
+3. ArgoCD applies the configuration to the Kubernetes cluster
+4. The Recif operator reconciles the Agent CRD
+
+This enables a fully GitOps-native workflow where Git is the single source of truth and all changes flow through version-controlled commits.
+
+> [!NOTE]
+> ArgoCD integration is planned for v0.2. Currently, the Recif API commits directly to `recif-state` via the GitHub API, and the operator applies changes directly to K8s.
+
+> [!TIP]
+> You can browse the `recif-state` repository in any Git UI to see the complete history of every agent. Each commit message includes the agent slug, version, and changelog.

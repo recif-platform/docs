@@ -1,16 +1,191 @@
 ---
 title: "CRD Spec"
-description: "Complete specification for the Agent and Tool Custom Resource Definitions."
+description: "Complete specification for the Agent Custom Resource Definition managed by the Recif operator."
 ---
 
 ## Overview
 
-Recif uses Kubernetes Custom Resource Definitions (CRDs) to declare agents and tools. This page documents every field in the Agent and Tool CRDs with examples and validation rules.
+Recif uses a Kubernetes Custom Resource Definition (CRD) to declare agents. The Recif operator watches for Agent resources and reconciles them into running Deployments, Services, and ConfigMaps.
 
-> [!NOTE] This page is under active development. Full CRD reference coming soon.
+**API Group:** `recif.dev`
+**API Version:** `v1`
+**Kind:** `Agent`
 
-## Resources
+## AgentSpec
 
-- `Agent` (recif.dev/v1alpha1) — defines an AI agent with its runtime, LLM, channels, tools, and governance
-- `Tool` (recif.dev/v1alpha1) — defines a tool or MCP server available to agents
-- `PlatformConfig` (recif.dev/v1alpha1) — platform-wide settings, model whitelist, default guards
+The `spec` field defines the desired state of an agent.
+
+| Field | Type | Default | Required | Description |
+|-------|------|---------|----------|-------------|
+| `name` | string | -- | Yes | Human-readable name of the agent. |
+| `framework` | string | -- | Yes | Agent framework. Enum: `adk`, `langchain`, `crewai`, `autogen`, `custom`. |
+| `strategy` | string | `simple` | No | Execution strategy. Common values: `simple`, `agent-react`. |
+| `channel` | string | `rest` | No | Communication channel. |
+| `modelType` | string | `stub` | No | LLM provider key. Enum: `stub`, `ollama`, `openai`, `anthropic`, `vertex-ai`, `bedrock`, `google-ai`. |
+| `modelId` | string | `stub-echo` | No | Model identifier for the chosen provider. |
+| `systemPrompt` | string | (empty) | No | The agent's instruction set. |
+| `storage` | string | `memory` | No | Conversation storage backend. Enum: `memory`, `postgresql`. |
+| `databaseUrl` | string | (empty) | No | PostgreSQL connection string. Required when `storage: postgresql`. |
+| `tools` | []string | (empty) | No | List of Tool CRD names assigned to this agent. |
+| `knowledgeBases` | []string | (empty) | No | Knowledge base IDs for RAG strategy. |
+| `skills` | []string | (empty) | No | Skill IDs assigned to this agent. |
+| `envSecrets` | []string | `["agent-env"]` | No | Secret names whose data is injected as env vars. Defaults to `["agent-env"]` when empty. |
+| `credentialSecret` | string | `gcp-adc` | No | Secret containing a GCP/AWS credentials file to mount. |
+| `gcpServiceAccount` | string | (empty) | No | GCP service account email. When set, the operator mounts `{agent}-gcp-sa` Secret and sets `GOOGLE_APPLICATION_CREDENTIALS`. |
+| `image` | string | `corail:latest` | No | Container image for the agent. |
+| `replicas` | *int32 | `1` | No | Number of pod replicas. Min: 0, Max: 10. |
+| `suggestionsProvider` | string | (empty) | No | Suggestion mode: `llm` (dynamic) or `static` (from config). |
+| `suggestions` | string | (empty) | No | JSON array of static suggestion strings. |
+| `evalSampleRate` | int32 | `0` | No | Percentage of production traces to auto-evaluate (0-100, 0 = disabled). |
+| `judgeModel` | string | (empty) | No | Model ID for LLM-judge evaluation (e.g. `openai:/gpt-4o-mini`). |
+| `canary` | *CanarySpec | nil | No | Canary deployment configuration. See CanarySpec below. |
+
+## CanarySpec
+
+The `canary` field defines a challenger deployment to run alongside the stable version.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `enabled` | bool | Yes | Whether the canary deployment is active. |
+| `weight` | int32 | Yes | Traffic percentage routed to canary (1-100). |
+| `image` | string | No | Container image override for canary. |
+| `modelType` | string | No | LLM provider override. |
+| `modelId` | string | No | Model ID override. |
+| `systemPrompt` | string | No | System prompt override. |
+| `skills` | []string | No | Skills override for canary. |
+| `tools` | []string | No | Tools override for canary. |
+| `version` | string | No | Version label for the canary deployment. |
+
+## AgentStatus
+
+The `status` subresource is managed by the operator and reflects the observed state.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `phase` | AgentPhase | Current lifecycle phase. Enum: `Pending`, `Running`, `Failed`, `Terminated`. |
+| `replicas` | int32 | Observed number of ready replicas. |
+| `endpoint` | string | In-cluster service URL (e.g. `http://support-agent.team-default.svc:8000`). |
+| `conditions` | []metav1.Condition | Standard Kubernetes conditions for detailed status. |
+
+### AgentPhase Values
+
+| Phase | Description |
+|-------|------------|
+| `Pending` | Agent resource created, operator is provisioning. |
+| `Running` | Deployment is healthy, pods are ready. |
+| `Failed` | Deployment has errors (crash loop, image pull failure). |
+| `Terminated` | Agent has been stopped or deleted. |
+
+## Print Columns
+
+The CRD defines custom print columns for `kubectl get agents`:
+
+| Column | Type | JSONPath |
+|--------|------|---------|
+| Phase | string | `.status.phase` |
+| Replicas | integer | `.status.replicas` |
+| Endpoint | string | `.status.endpoint` |
+| Age | date | `.metadata.creationTimestamp` |
+
+## Minimal Example
+
+The smallest valid Agent CRD with only required fields:
+
+```yaml
+apiVersion: recif.dev/v1
+kind: Agent
+metadata:
+  name: my-agent
+  namespace: team-default
+spec:
+  name: "My Agent"
+  framework: adk
+```
+
+This creates an agent with all defaults: `stub` model, `simple` strategy, `rest` channel, `memory` storage, 1 replica.
+
+## Full Example
+
+A production-ready Agent CRD with all fields:
+
+```yaml
+apiVersion: recif.dev/v1
+kind: Agent
+metadata:
+  name: support-agent
+  namespace: team-default
+spec:
+  # Identity
+  name: "Support Agent"
+  framework: adk
+
+  # LLM
+  modelType: openai
+  modelId: gpt-4
+  systemPrompt: |
+    You are a customer support agent for Acme Corp.
+    Be concise, helpful, and always provide sources.
+
+  # Runtime
+  strategy: agent-react
+  channel: rest
+  image: "ghcr.io/sciences44/corail:latest"
+  replicas: 2
+
+  # Storage
+  storage: postgresql
+  databaseUrl: "postgres://recif:recif_dev@recif-postgresql:5432/recif"
+
+  # Capabilities
+  tools:
+    - web-search
+    - ticket-lookup
+  skills:
+    - agui-render
+    - code-review
+  knowledgeBases:
+    - kb_products
+    - kb_faq
+
+  # Secrets
+  envSecrets:
+    - agent-env
+    - acme-api-keys
+  credentialSecret: gcp-adc
+  gcpServiceAccount: "support@acme-project.iam.gserviceaccount.com"
+
+  # Suggestions
+  suggestionsProvider: llm
+  suggestions: '["How can I help?", "Check order status", "Return policy"]'
+
+  # Evaluation
+  evalSampleRate: 15
+  judgeModel: "openai:/gpt-4o-mini"
+
+  # Canary
+  canary:
+    enabled: false
+    weight: 0
+```
+
+## Applying Changes
+
+```bash
+# Create or update
+kubectl apply -f support-agent.yaml
+
+# Check status
+kubectl get agents -n team-default
+
+# Describe for events and conditions
+kubectl describe agent support-agent -n team-default
+
+# Delete
+kubectl delete agent support-agent -n team-default
+```
+
+> [!NOTE]
+> The operator reconciles every 30 seconds. Changes to the CRD spec are picked up automatically and applied to the Deployment and ConfigMap.
+
+> [!WARNING]
+> Setting `replicas: 0` effectively stops the agent without deleting it. Use `POST /agents/{id}/stop` via the API for a controlled shutdown that also updates the database state.

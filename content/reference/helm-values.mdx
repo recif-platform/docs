@@ -5,16 +5,227 @@ description: "Complete reference for the Recif Helm chart configuration values."
 
 ## Overview
 
-The Recif Helm chart packages all platform components for one-command installation. This page documents every configurable value with defaults and examples.
+The Recif Helm chart packages all platform components for one-command installation. Install with:
 
-> [!NOTE] This page is under active development. Full Helm values reference coming soon.
+```bash
+helm install recif deploy/helm/recif -n recif-system --create-namespace
+```
 
-## Sections
+Override values with `-f values-override.yaml` or `--set key=value`.
 
-- **global** — domain, TLS, image registry, pull secrets
-- **api** — API server replicas, resources, database connection
-- **dashboard** — Dashboard replicas, resources, base URL
-- **operator** — Operator settings, reconciliation interval, namespace watch
-- **postgresql** — Database settings, persistence, backups
-- **istio** — Service mesh configuration, mTLS, traffic policies
-- **mlflow** — MLflow server settings (optional)
+## global
+
+Global settings shared across all subcharts.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `global.imageTag` | `latest` | Default image tag for all Recif components. |
+| `global.imagePullPolicy` | `IfNotPresent` | Kubernetes image pull policy. Options: `Always`, `IfNotPresent`, `Never`. |
+| `global.teamNamespace` | `team-default` | Default namespace for agent deployments. |
+
+## api
+
+Recif API server configuration.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `api.replicas` | `1` | Number of API server replicas. |
+| `api.image` | `ghcr.io/sciences44/recif-api` | API server container image. |
+| `api.port` | `8080` | HTTP port for the API server. |
+| `api.resources.requests.cpu` | `100m` | CPU request. |
+| `api.resources.requests.memory` | `128Mi` | Memory request. |
+| `api.resources.limits.cpu` | `500m` | CPU limit. |
+| `api.resources.limits.memory` | `512Mi` | Memory limit. |
+| `api.env.AUTH_ENABLED` | `"false"` | Enable JWT authentication. Set to `"true"` for production. |
+| `api.env.LOG_LEVEL` | `"info"` | Log level: `debug`, `info`, `warn`, `error`. |
+| `api.env.LOG_FORMAT` | `"json"` | Log format: `json` or `text`. |
+| `api.env.ENV_PROFILE` | `"dev"` | Environment profile: `dev`, `staging`, `production`. |
+
+## operator
+
+Recif Kubernetes operator configuration.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `operator.replicas` | `1` | Number of operator replicas. Should be 1 (leader election). |
+| `operator.image` | `ghcr.io/sciences44/recif-operator` | Operator container image. |
+| `operator.resources.requests.cpu` | `100m` | CPU request. |
+| `operator.resources.requests.memory` | `128Mi` | Memory request. |
+| `operator.resources.limits.cpu` | `500m` | CPU limit. |
+| `operator.resources.limits.memory` | `256Mi` | Memory limit. |
+
+## dashboard
+
+Recif web dashboard configuration.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `dashboard.enabled` | `true` | Deploy the dashboard. Set `false` for headless/API-only mode. |
+| `dashboard.replicas` | `1` | Number of dashboard replicas. |
+| `dashboard.image` | `ghcr.io/sciences44/recif-dashboard` | Dashboard container image. |
+| `dashboard.port` | `3000` | HTTP port for the dashboard. |
+| `dashboard.apiUrl` | `""` | Override `NEXT_PUBLIC_API_URL`. Example: `http://recif-api:8080`. Auto-detected when empty. |
+| `dashboard.resources.requests.cpu` | `50m` | CPU request. |
+| `dashboard.resources.requests.memory` | `64Mi` | Memory request. |
+| `dashboard.resources.limits.cpu` | `200m` | CPU limit. |
+| `dashboard.resources.limits.memory` | `256Mi` | Memory limit. |
+
+## postgresql
+
+PostgreSQL database with pgvector extension.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `postgresql.enabled` | `true` | Deploy PostgreSQL. Set `false` to use an external database. |
+| `postgresql.image` | `pgvector/pgvector:pg16` | PostgreSQL image with pgvector support. |
+| `postgresql.storage` | `10Gi` | Persistent volume size. |
+| `postgresql.port` | `5432` | PostgreSQL port. |
+| `postgresql.credentials.database` | `recif` | Database name. |
+| `postgresql.credentials.username` | `recif` | Database username. |
+| `postgresql.credentials.password` | `recif_dev` | Database password. **Override in production.** |
+
+> [!WARNING]
+> The default PostgreSQL password (`recif_dev`) is for development only. Always set a strong password for staging and production deployments.
+
+## corail
+
+Default agent runtime configuration.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `corail.image` | `ghcr.io/sciences44/corail` | Default Corail agent container image. |
+| `corail.defaultModel` | `ollama/qwen3.5:4b` | Default model for new agents (provider/model format). |
+
+## ollama
+
+Ollama local LLM server (optional).
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `ollama.enabled` | `true` | Deploy Ollama for local model inference. |
+| `ollama.image` | `ollama/ollama:latest` | Ollama container image. |
+| `ollama.storage` | `20Gi` | Persistent volume size for model storage. |
+| `ollama.port` | `11434` | Ollama API port. |
+| `ollama.gpu` | `false` | Enable GPU support. Set `true` for GPU nodes. |
+| `ollama.models` | `["qwen3.5:4b", "nomic-embed-text"]` | Models to pull on startup. |
+
+> [!TIP]
+> Set `ollama.gpu: true` when running on nodes with NVIDIA GPUs for significantly faster inference. The Helm chart configures the appropriate resource limits and tolerations.
+
+## llm
+
+LLM provider API keys. These are injected into the `agent-env` Secret in agent namespaces.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `llm.googleApiKey` | `""` | Google AI API key (simplest setup -- get from aistudio.google.com). |
+| `llm.openaiApiKey` | `""` | OpenAI API key. |
+| `llm.anthropicApiKey` | `""` | Anthropic API key. |
+| `llm.awsRegion` | `""` | AWS region for Bedrock (e.g. `us-east-1`). |
+| `llm.awsAccessKeyId` | `""` | AWS access key ID for Bedrock. |
+| `llm.awsSecretAccessKey` | `""` | AWS secret access key for Bedrock. |
+| `llm.gcp.project` | `""` | GCP project ID for Vertex AI. |
+| `llm.gcp.location` | `us-central1` | GCP region for Vertex AI. |
+
+> [!NOTE]
+> You need at minimum ONE provider configured to run agents with real LLMs. For local development, Ollama works with no API key. For the fastest cloud setup, use `llm.googleApiKey` from Google AI Studio.
+
+### Setting LLM keys securely
+
+For production, pass keys via `--set` or from a separate values file that is not committed to version control:
+
+```bash
+helm install recif deploy/helm/recif \
+  -n recif-system --create-namespace \
+  --set llm.openaiApiKey=$OPENAI_API_KEY \
+  --set llm.anthropicApiKey=$ANTHROPIC_API_KEY
+```
+
+Or use a secrets file:
+
+```bash
+helm install recif deploy/helm/recif \
+  -n recif-system --create-namespace \
+  -f values-secrets.yaml
+```
+
+## istio
+
+Istio service mesh configuration.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `istio.enabled` | `false` | Enable Istio integration for mTLS, traffic splitting, and observability. |
+
+When enabled, the Helm chart creates VirtualService and DestinationRule resources for canary traffic splitting.
+
+## ingress
+
+Ingress configuration for external access.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `ingress.enabled` | `false` | Enable Kubernetes Ingress. |
+| `ingress.className` | `nginx` | Ingress controller class. |
+| `ingress.host` | `recif.local` | Hostname for the ingress rule. |
+| `ingress.tls` | `false` | Enable TLS termination. |
+
+### Example: Expose with Ingress
+
+```yaml
+ingress:
+  enabled: true
+  className: nginx
+  host: recif.example.com
+  tls: true
+```
+
+## Full Override Example
+
+A production-ready values override:
+
+```yaml
+global:
+  imageTag: "v0.1.0"
+  imagePullPolicy: Always
+
+api:
+  replicas: 2
+  env:
+    AUTH_ENABLED: "true"
+    LOG_LEVEL: "warn"
+    ENV_PROFILE: "production"
+
+operator:
+  replicas: 1
+
+dashboard:
+  enabled: true
+  replicas: 2
+  apiUrl: "https://api.recif.example.com"
+
+postgresql:
+  enabled: true
+  storage: 50Gi
+  credentials:
+    password: "strong-production-password"
+
+corail:
+  defaultModel: "openai/gpt-4"
+
+ollama:
+  enabled: false  # Use cloud providers in production
+
+llm:
+  openaiApiKey: "${OPENAI_API_KEY}"
+  anthropicApiKey: "${ANTHROPIC_API_KEY}"
+
+istio:
+  enabled: true
+
+ingress:
+  enabled: true
+  className: nginx
+  host: recif.example.com
+  tls: true
+```

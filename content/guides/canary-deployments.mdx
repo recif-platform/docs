@@ -1,19 +1,261 @@
 ---
 title: "Canary Deployments"
-description: "Deploy agents safely with canary releases, blue/green, A/B testing, and auto-rollback."
+description: "Deploy agent versions safely with canary releases, traffic splitting, and automated quality gates."
 ---
 
 ## Overview
 
-Recif leverages Istio traffic splitting to provide production-safe deployment strategies for your agents. Roll out new versions gradually, test with a subset of traffic, and automatically roll back if quality drops.
+Canary deployments let you test a new agent configuration alongside the stable version with a subset of traffic. Recif creates a separate canary Deployment and Service in Kubernetes, integrates with Flagger for automated quality gates, and supports manual promote/rollback via the API.
 
-> [!NOTE] This page is under active development. Full content coming soon.
+## Champion vs Challenger
 
-## What You'll Learn
+| Term | Description |
+|------|------------|
+| **Champion** (stable) | The current production version of the agent |
+| **Challenger** (canary) | The new version being tested with a percentage of traffic |
 
-- Canary releases with gradual traffic shifting
-- Blue/green deployments for zero-downtime switches
-- A/B testing between agent versions
-- Auto-rollback based on evaluation scores
-- Flagger webhook integration for automated promotion
-- Monitoring deployment health in the dashboard
+When a canary is started, Recif creates:
+- A canary Deployment (`{agent-slug}-canary`) with `version: canary` labels
+- A canary Service for routing
+- A ConfigMap with the challenger configuration
+- A patch on the Agent CRD with the canary spec
+
+## Start a Canary via API
+
+```bash
+curl -X POST http://localhost:8080/api/v1/agents/ag_01J.../canary \
+  -H "Content-Type: application/json" \
+  -d '{
+    "config": {
+      "modelType": "anthropic",
+      "modelId": "claude-sonnet-4-20250514",
+      "systemPrompt": "You are an improved support agent with better reasoning.",
+      "weight": 20
+    }
+  }'
+```
+
+Response:
+
+```json
+{
+  "data": {
+    "enabled": true,
+    "config": {
+      "modelType": "anthropic",
+      "modelId": "claude-sonnet-4-20250514",
+      "systemPrompt": "You are an improved support agent with better reasoning.",
+      "weight": 20
+    },
+    "stable_version": "v3",
+    "canary_version": "canary"
+  }
+}
+```
+
+The `config` object accepts any Agent CRD spec field. Common fields to change in a canary:
+
+| Field | Description |
+|-------|------------|
+| `modelType` | Switch LLM provider |
+| `modelId` | Try a different model |
+| `systemPrompt` | Test a new prompt |
+| `skills` | Add or remove skills |
+| `tools` | Change tool configuration |
+| `weight` | Percentage of traffic to route to canary (1-100) |
+
+## Traffic Splitting
+
+The `weight` field controls what percentage of traffic goes to the canary. With Istio enabled, this uses VirtualService traffic routing. Without Istio, the proxy handler uses weighted random selection.
+
+| Weight | Stable Traffic | Canary Traffic |
+|--------|---------------|----------------|
+| 10 | 90% | 10% |
+| 20 | 80% | 20% |
+| 50 | 50% | 50% |
+
+> [!TIP]
+> Start with a low weight (10-20%) and increase gradually as confidence grows. Monitor the AI Radar dashboard for quality degradation.
+
+## Check Canary Status
+
+```bash
+curl http://localhost:8080/api/v1/agents/ag_01J.../canary
+```
+
+Response:
+
+```json
+{
+  "data": {
+    "enabled": true,
+    "config": {},
+    "stable_version": "v3",
+    "canary_version": "canary"
+  }
+}
+```
+
+## Promote the Canary
+
+When the canary passes quality checks, promote it to become the new stable version:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/agents/ag_01J.../canary/promote
+```
+
+Response:
+
+```json
+{
+  "status": "promoted",
+  "agent_id": "ag_01J..."
+}
+```
+
+**What happens on promote:**
+1. The canary Deployment, ConfigMap, and Service are deleted
+2. The canary spec is cleared from the Agent CRD
+3. A `AgentCanaryPromoted` event is emitted
+4. The release handler can subscribe and create a new release from the canary config
+
+## Rollback the Canary
+
+If the canary performs poorly, roll back to the stable version:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/agents/ag_01J.../canary/rollback
+```
+
+Response:
+
+```json
+{
+  "status": "rolled_back",
+  "agent_id": "ag_01J..."
+}
+```
+
+**What happens on rollback:**
+1. The canary Deployment, ConfigMap, and Service are deleted
+2. The canary spec is cleared from the Agent CRD
+3. A `AgentCanaryRolledBack` event is emitted
+4. All traffic returns to the stable version
+
+## Flagger Webhook Quality Gate
+
+Recif exposes a Flagger-compatible webhook at `POST /api/v1/webhooks/flagger` that acts as an automated quality gate during canary analysis.
+
+### How it works
+
+1. Flagger calls the webhook during each canary analysis step
+2. Recif queries MLflow for the latest evaluation scores of the canary agent
+3. The average score across all metrics is compared against the pass threshold (60%)
+4. If the score passes, Recif returns `200 OK` and Flagger continues promotion
+5. If the score fails, Recif returns `412 Precondition Failed` and Flagger triggers rollback
+
+### Webhook request format
+
+```json
+{
+  "name": "support-agent",
+  "namespace": "team-default",
+  "phase": "Progressing"
+}
+```
+
+### Webhook response (pass)
+
+```json
+{
+  "status": "ok",
+  "message": "Quality gate passed (score=0.85)"
+}
+```
+
+### Webhook response (fail)
+
+```json
+{
+  "status": "failed",
+  "message": "Quality gate failed (score=0.42)"
+}
+```
+
+> [!NOTE]
+> If MLflow is unavailable when Flagger calls the webhook, the canary is approved by default with the message "Quality gate passed (MLflow unavailable, default approve)". Configure MLflow in production to enable real quality gating.
+
+### Auto-Promote vs Auto-Rollback
+
+| Condition | Result |
+|-----------|--------|
+| Average score >= 0.6 (60%) | **Auto-promote** -- Flagger promotes the canary |
+| Average score < 0.6 (60%) | **Auto-rollback** -- Flagger rolls back to stable |
+| MLflow unavailable | **Auto-promote** (default approve) |
+
+## CanarySpec CRD Fields
+
+The canary configuration is part of the Agent CRD spec:
+
+```yaml
+spec:
+  canary:
+    enabled: true            # Whether canary is active
+    weight: 20               # Traffic percentage (1-100)
+    image: "corail:v2"       # Container image for canary (optional)
+    modelType: "anthropic"   # Override model provider
+    modelId: "claude-sonnet-4-20250514"  # Override model ID
+    systemPrompt: "..."      # Override system prompt
+    skills:                  # Override skill list
+      - agui-render
+    tools:                   # Override tool list
+      - web-search
+    version: "canary"        # Version label
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `enabled` | bool | Yes | Activates/deactivates the canary |
+| `weight` | int32 | Yes | Traffic percentage routed to canary |
+| `image` | string | No | Container image override |
+| `modelType` | string | No | LLM provider override |
+| `modelId` | string | No | Model ID override |
+| `systemPrompt` | string | No | System prompt override |
+| `skills` | []string | No | Skills override |
+| `tools` | []string | No | Tools override |
+| `version` | string | No | Version label for the canary |
+
+## Full Canary Deployment Flow
+
+Here is a complete example of deploying, monitoring, and promoting a canary:
+
+```bash
+# 1. Start the canary with a new model
+curl -X POST http://localhost:8080/api/v1/agents/ag_01J.../canary \
+  -H "Content-Type: application/json" \
+  -d '{
+    "config": {
+      "modelType": "anthropic",
+      "modelId": "claude-sonnet-4-20250514",
+      "weight": 10
+    }
+  }'
+
+# 2. Check canary status
+curl http://localhost:8080/api/v1/agents/ag_01J.../canary
+
+# 3. Monitor quality via AI Radar
+curl http://localhost:8080/api/v1/radar/ag_01J...
+
+# 4. Check the governance scorecard
+curl http://localhost:8080/api/v1/governance/scorecards/ag_01J...
+
+# 5a. If quality is good -- promote
+curl -X POST http://localhost:8080/api/v1/agents/ag_01J.../canary/promote
+
+# 5b. If quality degraded -- rollback
+curl -X POST http://localhost:8080/api/v1/agents/ag_01J.../canary/rollback
+```
+
+> [!WARNING]
+> Canary deployments require a Kubernetes connection (`k8sWriter`). The API returns `503 Service Unavailable` if K8s is not configured.

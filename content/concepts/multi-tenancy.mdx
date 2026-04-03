@@ -1,19 +1,240 @@
 ---
 title: "Multi-Tenancy"
-description: "Namespace-per-team isolation, RBAC, resource quotas, and context inheritance in Recif."
+description: "Namespace-per-team isolation, RBAC roles, resource scoping, and secret propagation in Recif."
 ---
 
 ## Overview
 
-Recif achieves multi-tenancy through Kubernetes namespaces. Each team gets its own namespace with dedicated resource quotas, network policies, RBAC roles, and governance rules. Context cascades from platform to team to agent to user.
+Recif achieves multi-tenancy through Kubernetes namespaces. Each team gets its own namespace with dedicated agents, secrets, and resource isolation. The platform manages team membership and role-based access control through its API.
 
-> [!NOTE] This page is under active development. Full content coming soon.
+## Namespace-Per-Team Model
 
-## What You'll Learn
+Every team maps to a Kubernetes namespace following the naming convention `team-{slug}`:
 
-- Namespace-per-team isolation model
-- RBAC: platform admin, team admin, member, viewer roles
-- Resource quotas (CPU, memory, token budgets)
-- Network policies for agent-to-tool communication
-- Multi-level context hierarchy (platform, team, agent, user, session)
-- Cross-agent user preference propagation
+```
+Platform
+  |
+  +-- team-default (namespace)
+  |     +-- support-agent (Deployment)
+  |     +-- research-agent (Deployment)
+  |     +-- agent-env (Secret)
+  |
+  +-- team-engineering (namespace)
+  |     +-- code-reviewer (Deployment)
+  |     +-- agent-env (Secret)
+  |
+  +-- team-data-science (namespace)
+        +-- ml-assistant (Deployment)
+        +-- agent-env (Secret)
+```
+
+The default namespace is `team-default`, configured via `global.teamNamespace` in the Helm chart.
+
+### Namespace derivation
+
+Team IDs are converted to namespace names:
+
+| Team ID | Namespace |
+|---------|-----------|
+| `tk_default` | `team-default` |
+| `tk_ENGINEERING` | `team-engineering` |
+| `tk_DataScience` | `team-datascience` |
+| (empty) | `team-default` |
+
+## Team Management
+
+### Create a team
+
+```bash
+curl -X POST http://localhost:8080/api/v1/teams \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Engineering",
+    "description": "Backend engineering team"
+  }'
+```
+
+Response:
+
+```json
+{
+  "data": {
+    "id": "tk_01J...",
+    "name": "Engineering",
+    "slug": "engineering",
+    "description": "Backend engineering team",
+    "namespace": "team-engineering",
+    "member_count": 0,
+    "agent_count": 0,
+    "created_at": "2026-04-03T10:00:00Z"
+  }
+}
+```
+
+### Add a member
+
+```bash
+curl -X POST http://localhost:8080/api/v1/teams/tk_01J.../members \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "developer@company.com",
+    "role": "developer"
+  }'
+```
+
+### Update a member's role
+
+```bash
+curl -X PATCH http://localhost:8080/api/v1/teams/tk_01J.../members/user_01J... \
+  -H "Content-Type: application/json" \
+  -d '{
+    "role": "admin"
+  }'
+```
+
+### Remove a member
+
+```bash
+curl -X DELETE http://localhost:8080/api/v1/teams/tk_01J.../members/user_01J...
+```
+
+### List teams
+
+```bash
+curl http://localhost:8080/api/v1/teams
+```
+
+### Get team details
+
+```bash
+curl http://localhost:8080/api/v1/teams/tk_01J...
+```
+
+### Delete a team
+
+```bash
+curl -X DELETE http://localhost:8080/api/v1/teams/tk_01J...
+```
+
+## RBAC Roles
+
+Recif defines four roles with increasing privilege levels:
+
+| Role | Scope | Capabilities |
+|------|-------|-------------|
+| **platform_admin** | Global | Full access to all teams, agents, and platform configuration |
+| **admin** | Team | Manage team members, create/delete agents, configure governance |
+| **developer** | Team | Create agents, deploy, trigger evaluations, view scorecards |
+| **viewer** | Team | Read-only access to agents, evaluations, and dashboards |
+
+### Role permissions matrix
+
+| Action | platform_admin | admin | developer | viewer |
+|--------|---------------|-------|-----------|--------|
+| Create team | Yes | No | No | No |
+| Delete team | Yes | No | No | No |
+| Add/remove members | Yes | Yes | No | No |
+| Change member roles | Yes | Yes | No | No |
+| Create agent | Yes | Yes | Yes | No |
+| Delete agent | Yes | Yes | No | No |
+| Deploy agent | Yes | Yes | Yes | No |
+| Update agent config | Yes | Yes | Yes | No |
+| Trigger evaluation | Yes | Yes | Yes | No |
+| View agents | Yes | Yes | Yes | Yes |
+| View evaluations | Yes | Yes | Yes | Yes |
+| View scorecards | Yes | Yes | Yes | Yes |
+| Manage governance policies | Yes | Yes | No | No |
+| Platform config | Yes | No | No | No |
+
+## Resource Isolation
+
+Each team namespace is independently managed:
+
+- **Agents** are scoped to a single team namespace
+- **Secrets** are namespace-local (an agent in `team-engineering` cannot access secrets in `team-default`)
+- **Network** -- agents in different namespaces are isolated (configurable with Istio network policies)
+- **Resource quotas** can be applied per namespace using standard Kubernetes ResourceQuota
+
+### Example resource quota
+
+```yaml
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: team-quota
+  namespace: team-engineering
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    limits.cpu: "8"
+    limits.memory: 16Gi
+    pods: "20"
+```
+
+## Secret Propagation
+
+Agents load API keys and credentials from Kubernetes Secrets in their namespace.
+
+### Default secret: agent-env
+
+The Helm chart creates an `agent-env` Secret in each team namespace containing LLM provider API keys:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: agent-env
+  namespace: team-default
+type: Opaque
+data:
+  OPENAI_API_KEY: <base64>
+  ANTHROPIC_API_KEY: <base64>
+  GOOGLE_API_KEY: <base64>
+```
+
+### Custom secrets
+
+Agents can reference additional secrets via the `envSecrets` field:
+
+```yaml
+spec:
+  envSecrets:
+    - agent-env           # Default LLM keys
+    - custom-api-keys     # Team-specific secrets
+```
+
+All key-value pairs from referenced Secrets are injected as environment variables into the agent pod.
+
+### Credential files
+
+For GCP service accounts and similar file-based credentials, use `credentialSecret`:
+
+```yaml
+spec:
+  credentialSecret: gcp-adc
+```
+
+This mounts the Secret as a file and sets `GOOGLE_APPLICATION_CREDENTIALS` to its path.
+
+## How Agents Are Scoped to Teams
+
+When a request arrives at the Recif API, the middleware extracts the team context from the authentication token or request headers. All subsequent operations are scoped to that team's namespace:
+
+1. **Agent listing** returns only agents in the team's namespace
+2. **Agent creation** places the Deployment in the team's namespace
+3. **Evaluations** are tagged with the team ID
+4. **Releases** include the team namespace in the artifact's deployment config
+
+```yaml
+# In recif-state artifact
+deployment:
+  namespace: team-engineering
+  environment: development
+```
+
+> [!NOTE]
+> In development mode (`AUTH_ENABLED: "false"`), all requests default to `team-default`. Enable authentication for real multi-tenant isolation.
+
+> [!TIP]
+> Use the `platform_admin` role sparingly. Most day-to-day operations should be done by `admin` or `developer` role users within their team scope.

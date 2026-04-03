@@ -1,19 +1,245 @@
 ---
 title: "Create an Agent"
-description: "Step-by-step guide to creating, configuring, and deploying your first AI agent with Recif."
+description: "Step-by-step guide to creating, configuring, and deploying your first AI agent on Recif."
 ---
 
 ## Overview
 
-Creating an agent in Recif involves defining a declarative YAML configuration (Agent CRD), setting up its LLM provider, configuring channels, and applying governance rules. This guide walks through the entire process.
+There are two ways to create an agent on Recif: through the **Dashboard wizard** or by applying an **Agent CRD** directly with `kubectl`. Both paths result in the same Kubernetes-native resource managed by the Recif operator.
 
-> [!NOTE] This page is under active development. Full content coming soon. For now, see the [Quickstart](/docs/quickstart) for a fast-track setup.
+## Path 1: Dashboard Wizard
 
-## What You'll Learn
+### Step 1 -- Open the Agent Creator
 
-- How to write an Agent CRD from scratch
-- Configuring the Corail runtime strategy (ReAct, custom)
-- Connecting channels (REST API, widget, Slack)
-- Wiring tools and MCP servers
-- Setting up SOUL.md and AGENTS.md for agent identity
-- Applying governance rules and guards
+Navigate to **Agents > Create Agent** in the Recif dashboard. The wizard walks you through each section.
+
+### Step 2 -- Basic Information
+
+Fill in the agent identity:
+
+- **Name** -- Human-readable name (e.g. "Support Agent")
+- **Framework** -- One of: `adk`, `langchain`, `crewai`, `autogen`, `custom`
+- **System Prompt** -- The instruction set that defines your agent's behavior
+
+### Step 3 -- Model Configuration
+
+Select the LLM provider and model:
+
+| Provider | Model Type | Default Model ID |
+|----------|-----------|-----------------|
+| Ollama (local) | `ollama` | `qwen3.5:35b` |
+| OpenAI | `openai` | `gpt-4` |
+| Anthropic | `anthropic` | `claude-sonnet-4-20250514` |
+| Google AI | `google-ai` | `gemini-2.5-flash` |
+| Vertex AI | `vertex-ai` | `gemini-2.5-flash` |
+| AWS Bedrock | `bedrock` | `anthropic.claude-sonnet-4-20250514-v1:0` |
+
+### Step 4 -- Attach Tools, Skills, and Knowledge Bases
+
+- **Tools** -- Select from registered Tool CRDs or MCP servers
+- **Skills** -- Choose built-in skills (e.g. `agui-render`, `code-review`) or custom ones
+- **Knowledge Bases** -- Attach existing KBs for RAG-powered responses
+
+### Step 5 -- Runtime Settings
+
+Configure the Corail runtime:
+
+- **Strategy** -- `simple`, `agent-react`, or custom
+- **Channel** -- `rest` (HTTP API), or other supported channels
+- **Storage** -- `memory` (ephemeral) or `postgresql` (persistent conversations)
+- **Replicas** -- 1 to 10
+
+### Step 6 -- Deploy
+
+Click **Deploy**. The dashboard calls `POST /api/v1/agents` followed by `POST /api/v1/agents/{id}/deploy`. The operator creates the Deployment, Service, and ConfigMap in the team namespace.
+
+## Path 2: kubectl with Agent CRD
+
+### Full Agent CRD YAML
+
+```yaml
+apiVersion: recif.dev/v1
+kind: Agent
+metadata:
+  name: support-agent
+  namespace: team-default
+spec:
+  # Required fields
+  name: "Support Agent"
+  framework: adk              # adk | langchain | crewai | autogen | custom
+
+  # LLM configuration
+  modelType: openai            # ollama | openai | anthropic | google-ai | vertex-ai | bedrock
+  modelId: gpt-4               # Model identifier for the chosen provider
+  systemPrompt: |
+    You are a helpful customer support agent. Answer questions
+    about our products clearly and concisely.
+
+  # Runtime
+  strategy: agent-react        # simple | agent-react
+  channel: rest                # rest
+  image: "corail:latest"       # Container image for the agent
+  replicas: 1                  # 1-10
+
+  # Conversation storage
+  storage: postgresql           # memory | postgresql
+  databaseUrl: "postgres://recif:recif_dev@recif-postgresql:5432/recif"
+
+  # Capabilities
+  tools:                        # Tool CRD names
+    - web-search
+    - calculator
+  skills:                       # Skill IDs
+    - agui-render
+    - code-review
+  knowledgeBases:               # Knowledge base IDs
+    - kb_products
+    - kb_faq
+
+  # Secrets
+  envSecrets:                   # Secret names injected as env vars (default: ["agent-env"])
+    - agent-env
+    - custom-api-keys
+  credentialSecret: gcp-adc     # GCP/AWS credentials Secret name
+
+  # GCP Service Account (optional)
+  gcpServiceAccount: "my-agent@project.iam.gserviceaccount.com"
+
+  # Suggestions
+  suggestionsProvider: llm      # static | llm
+  suggestions: '["What can you do?", "Help me with billing"]'
+
+  # Evaluation
+  evalSampleRate: 10            # Percentage of traces to auto-evaluate (0-100)
+  judgeModel: "openai:/gpt-4o-mini"  # LLM-judge model for evaluation
+
+  # Canary (optional -- see Canary Deployments guide)
+  canary:
+    enabled: false
+```
+
+### Apply the CRD
+
+```bash
+kubectl apply -f support-agent.yaml
+```
+
+### Verify deployment
+
+```bash
+# Check the Agent resource status
+kubectl get agents -n team-default
+
+# Expected output:
+# NAME            PHASE     REPLICAS   ENDPOINT                                         AGE
+# support-agent   Running   1          http://support-agent.team-default.svc:8000       30s
+
+# Check the pod is running
+kubectl get pods -n team-default -l app=support-agent
+```
+
+## Deploy and Verify via API
+
+You can also create and deploy agents entirely through the REST API:
+
+```bash
+# 1. Create the agent
+curl -X POST http://localhost:8080/api/v1/agents \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Support Agent",
+    "framework": "adk",
+    "model_type": "openai",
+    "model_id": "gpt-4",
+    "system_prompt": "You are a helpful customer support agent.",
+    "strategy": "agent-react",
+    "channel": "rest"
+  }'
+
+# Response includes the agent ID
+# {"data": {"id": "ag_01J...", "name": "Support Agent", ...}}
+
+# 2. Deploy the agent
+curl -X POST http://localhost:8080/api/v1/agents/ag_01J.../deploy
+
+# 3. Verify it's running
+curl http://localhost:8080/api/v1/agents/ag_01J...
+
+# 4. Send a chat message
+curl -X POST http://localhost:8080/api/v1/agents/ag_01J.../chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello, what can you help me with?"}'
+```
+
+## Common Configurations
+
+| Use Case | Framework | Strategy | Model | Key Settings |
+|----------|-----------|----------|-------|-------------|
+| Chat Bot | `adk` | `agent-react` | `openai/gpt-4` | `storage: postgresql`, suggestions enabled |
+| Code Reviewer | `adk` | `agent-react` | `anthropic/claude-sonnet-4-20250514` | Skills: `code-review`, `agui-render` |
+| Security Scanner | `custom` | `simple` | `openai/gpt-4` | Tools: `vulnerability-db`, `cve-lookup` |
+| Research Assistant | `adk` | `agent-react` | `google-ai/gemini-2.5-flash` | Knowledge bases attached, `evalSampleRate: 20` |
+| RAG Q&A Agent | `adk` | `agent-react` | `ollama/qwen3.5:35b` | Knowledge bases, `storage: postgresql` |
+
+## Attaching Tools
+
+Tools are referenced by their Tool CRD name in the `spec.tools` array. Each tool is a separate Kubernetes resource:
+
+```yaml
+apiVersion: recif.dev/v1
+kind: Agent
+metadata:
+  name: research-agent
+  namespace: team-default
+spec:
+  name: "Research Agent"
+  framework: adk
+  modelType: openai
+  modelId: gpt-4
+  tools:
+    - web-search
+    - arxiv-lookup
+```
+
+You can also configure tools via the Corail env var `CORAIL_TOOLS` as a JSON array:
+
+```json
+[{"name": "web-search", "type": "http", "endpoint": "https://api.search.example/v1"}]
+```
+
+## Attaching Skills
+
+Skills are reusable capability modules. Assign them in the CRD or via the API:
+
+```bash
+# Update skills via API
+curl -X PUT http://localhost:8080/api/v1/agents/ag_01J.../skills \
+  -H "Content-Type: application/json" \
+  -d '{"skills": ["agui-render", "code-review"]}'
+```
+
+## Attaching Knowledge Bases
+
+Knowledge bases provide RAG context. Create a KB first (see the Knowledge Bases guide), then reference its ID:
+
+```yaml
+spec:
+  knowledgeBases:
+    - kb_products
+    - kb_internal_docs
+```
+
+> [!TIP]
+> When using knowledge bases, the agent automatically switches to a RAG-augmented strategy that retrieves relevant context before generating responses.
+
+## What Happens at Deploy Time
+
+1. The Recif API creates the Agent record in the database
+2. `POST /agents/{id}/deploy` triggers the operator via Kubernetes
+3. The operator creates: a **Deployment** (Corail container), a **Service** (port 8000), and a **ConfigMap** (agent configuration)
+4. The agent pod starts, loads the model configuration, and begins accepting requests
+5. A **release** is automatically created in the `recif-state` Git repository
+6. If `evalSampleRate > 0`, production traces are sampled for evaluation
+
+> [!NOTE]
+> The operator reconciles the CRD spec with the actual state every 30 seconds. Any manual changes to the Deployment will be overwritten to match the CRD.
