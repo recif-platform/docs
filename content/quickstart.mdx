@@ -17,12 +17,11 @@ colima start --kubernetes --cpu 4 --memory 8
 ## Step 1: Install Récif
 
 ```bash
-helm install recif oci://ghcr.io/recif-platform/helm-charts/recif \
-  --namespace recif-system --create-namespace \
-  --set ollama.enabled=false
+helm install recif oci://ghcr.io/recif-platform/helm-charts/recif:0.1.0 \
+  --namespace recif-system --create-namespace
 ```
 
-> [!NOTE] We disable Ollama in the cluster by default. Most developers connect to their own LLM provider (see Step 2).
+> [!TIP] This installs the API, Operator, Dashboard, and PostgreSQL. No LLM is included — you bring your own (see Step 2).
 
 Verify everything is running:
 
@@ -116,17 +115,21 @@ ollama serve    # runs on port 11434
 ```
 
 ```bash
+# Tell the agent where to find Ollama (on your host machine)
 kubectl create namespace team-default
+kubectl create secret generic ollama-config \
+  --namespace team-default \
+  --from-literal=OLLAMA_BASE_URL=http://host.docker.internal:11434
 ```
 
 Your agent config will use:
 ```yaml
 modelType: ollama
 modelId: qwen3.5:4b
-# No secret needed — but set OLLAMA_BASE_URL in the agent config
+envSecrets: [ollama-config]
 ```
 
-> [!NOTE] Ollama runs on your machine, not in the cluster. The agent connects via `host.docker.internal:11434` (Colima/Docker Desktop) or your machine's IP.
+> [!NOTE] `host.docker.internal` resolves to your Mac from inside K8s (Colima/Docker Desktop). On Linux, use your machine's IP instead.
 
 ---
 
