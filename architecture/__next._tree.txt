@@ -1,7 +1,7 @@
-:HL["/docs/_next/static/chunks/0j54x7hcvouew.css","style"]
+:HL["/docs/_next/static/chunks/0r3ifke1xgd4l.css","style"]
 :HL["/docs/diagrams/architecture-overview.svg","image"]
 :HL["/docs/diagrams/request-flow.svg","image"]
 :HL["/docs/diagrams/deployment-flow.svg","image"]
 :HL["/docs/diagrams/eval-lifecycle.svg","image"]
 :HL["/docs/diagrams/namespace-layout.svg","image"]
-0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"slug","param":{"type":"oc","key":"architecture","siblings":null},"prefetchHints":0,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}}}},"staleTime":300,"buildId":"SlPMTWfwlFtYB0SThnwv-"}
+0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"slug","param":{"type":"oc","key":"architecture","siblings":null},"prefetchHints":0,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}}}},"staleTime":300,"buildId":"iOIbjTZuwAWqkuVItFGj-"}
